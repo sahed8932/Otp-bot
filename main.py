@@ -24,7 +24,9 @@ def home():
     return "বট সচল আছে!"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    # রেন্ডার যেকোনো পোর্টে রান করতে পারে, তাই ওটা ডাইনামিক করা হলো
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
@@ -144,8 +146,11 @@ def send_notice(message):
         else:
             bot.reply_to(message, "❌ কোনো ইউজার ডাটাবেজ পাওয়া যায়নি।")
 
-# 🚀 মেইন রান এক্সিকিউশন
+# 🚀 মেইন রান এক্সিকিউশন (রেন্ডার ফিক্সড)
 if __name__ == "__main__":
     keep_alive()  # ব্যাকগ্রাউন্ডে Flask সার্ভার চালু করবে
     print("🚀 বট লাইভ হয়েছে...")
-    bot.infinity_polling()
+    try:
+        bot.polling(none_stop=True, interval=0, timeout=20)
+    except Exception as e:
+        print(f"বট রানিংয়ে সমস্যা: {e}")
