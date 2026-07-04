@@ -6,7 +6,7 @@ from flask import Flask
 from threading import Thread
 
 # ১. আপনার আসল বটের টোকেনটি এখানে বসান (অবশ্যই "" এর ভেতরে)
-BOT_TOKEN = "এখানে_আপনার_বট_টোকেন_বসান"
+BOT_TOKEN = "8979736100:AAF3FPGSq26C9UdHkPR2oRzE2eBLlmi8CWo"
 
 ADMIN_ID = 8262679678  # আপনার নিজের টেলিগ্রাম ইউজার আইডি
 CHANNEL_ID = "-1003956226642" 
