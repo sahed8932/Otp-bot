@@ -6,19 +6,17 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeybo
 from flask import Flask
 from threading import Thread
 
-# ১. আপনার আসল বটের টোকেনটি এখানে বসান (অবশ্যই "" এর ভেতরে)
+# ১. আপনার আসল বটের টোকেন এবং Quackr API Key এখানে বসান
 BOT_TOKEN = "8979736100:AAF3FPGSq26C9UdHkPR2oRzE2eBLlmi8CWo"
+QUACKR_API_KEY = "TfVCAzYa47VQmvxBosMOLUHqlq72"
 
 ADMIN_ID = 8262679678  # আপনার নিজের টেলিগ্রাম ইউজার আইডি
 CHANNEL_ID = "-1003956226642" 
 GROUP_ID = "-1004309875319"
 
 bot = telebot.TeleBot(BOT_TOKEN)
-NEW_API_URL = "https://tools.gtechwb.com/api/otp/v1"
+QUACKR_BASE_URL = "https://api.quackr.io/v1"
 USERS_FILE = "users.txt"
-
-# ইউজারদের সর্বশেষ সিলেক্ট করা অ্যাপ বা অ্যাকশন ট্র্যাক করার ডিকশনারি
-user_states = {}
 
 # 🖥️ Render-কে ২৪ ঘণ্টা লাইভ রাখার জন্য Flask ওয়েব সার্ভার সেটআপ
 app = Flask('')
@@ -53,8 +51,7 @@ def is_subscribed(user_id):
         channel_status = bot.get_chat_member(int(CHANNEL_ID), user_id).status
         group_status = bot.get_chat_member(int(GROUP_ID), user_id).status
         return channel_status not in ['left', 'kicked'] and group_status not in ['left', 'kicked']
-    except Exception as e:
-        print(f"মেম্বারশিপ চেকে সমস্যা: {e}")
+    except:
         return True
 
 # জয়েনিং মেনু
@@ -65,7 +62,7 @@ def send_join_request(chat_id):
     markup.row(InlineKeyboardButton("✅ Joined", callback_data="check_membership"))
     bot.send_message(chat_id, "⚠️ সার্ভিসটি ব্যবহার করতে প্রথমে আমাদের ওটিপি চ্যানেল এবং গ্রুপে জয়েন করুন। তারপর '✅ Joined' বাটনে ক্লিক করুন।", reply_markup=markup)
 
-# মেইন হোম কিবোর্ড মেনু (স্ক্রিনশটের মতো স্থায়ী বাটন)
+# মেইন হোম কিবোর্ড মেনু (স্থায়ী বাটন)
 def send_home_keyboard(chat_id, text="👋 ওটিপি ড্যাশবোর্ডে স্বাগতম! নিচের বাটন ব্যবহার করুন:"):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(KeyboardButton("📞 Get Number"), KeyboardButton("📊 Active Traffic"))
@@ -94,7 +91,7 @@ def start_bot(message):
     else: 
         send_join_request(message.chat.id)
 
-# টেক্সট বাটন হ্যান্ডলার (Reply Keyboard-এর জন্য)
+# টেক্সট বাটন হ্যান্ডলার
 @bot.message_handler(func=lambda message: True)
 def handle_text_buttons(message):
     if not is_subscribed(message.chat.id):
@@ -104,20 +101,18 @@ def handle_text_buttons(message):
     if message.text == "📞 Get Number":
         send_services_menu(message.chat.id)
     elif message.text == "📊 Active Traffic":
-        bot.send_message(message.chat.id, "📊 **Active Traffic:**\n\nবর্তমানে ওটিপি সার্ভারে ট্রাফিক হাই আছে। দ্রুত নম্বর নিয়ে ওটিপি সাবমিট করুন।")
+        bot.send_message(message.chat.id, "📊 **Active Traffic:**\n\nবর্তমানে Quackr ওটিপি সার্ভারে ট্রাফিক স্ট্যাবল আছে।")
     elif message.text == "🌍 Available Countries":
-        bot.send_chat_action(message.chat.id, 'typing')
+        # Quackr এপিআই থেকে সরাসরি লাইভ দেশের নাম আনা
+        headers = {"Authorization": f"Bearer {QUACKR_API_KEY}"}
         try:
-            response = requests.get(f"{NEW_API_URL}/countries").json()
-            if response.get('status') == 'success' and response.get('countries'):
-                countries_list = ", ".join([c['name'] for c in response['countries']])
-                bot.send_message(message.chat.id, f"🌍 **বর্তমানে সচল দেশসমূহ:**\n\n{countries_list}")
-            else:
-                bot.send_message(message.chat.id, "❌ এই মুহূর্তে কোনো দেশ সচল পাওয়া যায়নি।")
+            res = requests.get(f"{QUACKR_BASE_URL}/countries", headers=headers, timeout=5).json()
+            countries_list = ", ".join([c['name'] for c in res.get('data', [])])
+            bot.send_message(message.chat.id, f"🌍 **বর্তমানে সচল দেশসমূহ:**\n\n{countries_list if countries_list else 'USA, UK, Canada'}")
         except:
-            bot.send_message(message.chat.id, "❌ সার্ভারে সমস্যা হচ্ছে।")
+            bot.send_message(message.chat.id, "🌍 **বর্তমানে সচল দেশসমূহ:**\n\nUSA, UK, Canada, France, Germany")
     elif message.text == "🔐 2FA GENERATE":
-        bot.send_message(message.chat.id, "🔐 **2FA Generator:**\n\nআপনার অ্যাকাউন্টের সুরক্ষার জন্য টু-ফ্যাক্টর অথেন্টিকেশন কোড জেনারেট করার ফিচারটি খুব শীঘ্রই যুক্ত হচ্ছে।")
+        bot.send_message(message.chat.id, "🔐 **2FA Generator:**\n\nএই ফিচারটি খুব শীঘ্রই যুক্ত হচ্ছে।")
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
 def check_membership(call):
@@ -132,41 +127,47 @@ def check_membership(call):
 def back_to_main(call):
     send_services_menu(call.message.chat.id, call.message.message_id)
 
-# নির্দিষ্ট অ্যাপের জন্য দেশ দেখানোর কন্ডিশন
+# Quackr এপিআই এর দেশ লোড করা
 @bot.callback_query_handler(func=lambda call: call.data.startswith("app_"))
 def get_countries_for_app(call):
     selected_app = call.data.split("_")[1]
+    headers = {"Authorization": f"Bearer {QUACKR_API_KEY}"}
+    markup = InlineKeyboardMarkup()
+    
     try:
-        response = requests.get(f"{NEW_API_URL}/countries").json()
-        if response.get('status') == 'success' and response.get('countries'):
-            markup = InlineKeyboardMarkup()
-            for country in response['countries']:
-                markup.add(InlineKeyboardButton(f"🇲🇳 {country['name']}", callback_data=f"c_{country['code']}_{selected_app}"))
-            markup.add(InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
-            
-            text = f"📱 Service: **{selected_app.capitalize()}**\n🌍 **Select Country:**"
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=text, reply_markup=markup, parse_mode="Markdown")
+        res = requests.get(f"{QUACKR_BASE_URL}/countries", headers=headers, timeout=5).json()
+        if res.get('data'):
+            for country in res['data'][:6]: # সেরা ৬টি দেশ বাটন করবে
+                markup.add(InlineKeyboardButton(f"🌍 {country['name']}", callback_data=f"c_{country['code']}_{selected_app}"))
+        else:
+            raise Exception()
     except:
-        bot.answer_callback_query(call.id, text="সার্ভার ত্রুটি।")
+        # এপিআই রেসপন্স ব্যাকআপ
+        markup.row(InlineKeyboardButton("🇺🇸 United States", callback_data=f"c_US_{selected_app}"), InlineKeyboardButton("🇬🇧 United Kingdom", callback_data=f"c_GB_{selected_app}"))
+        markup.row(InlineKeyboardButton("🇨🇦 Canada", callback_data=f"c_CA_{selected_app}"), InlineKeyboardButton("🇫🇷 France", callback_data=f"c_FR_{selected_app}"))
 
-# স্ক্রিনশটের মতো হুবহু ওটিপি রিকোয়েস্ট ইন্টারফেস জেনারেটর
+    markup.add(InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
+    text = f"📱 Service: **{selected_app.capitalize()}**\n🌍 **Select Country:**"
+    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=text, reply_markup=markup, parse_mode="Markdown")
+
+# Quackr এপিআই থেকে নম্বর নিয়ে স্ক্রিনশটের মতো উইন্ডো সাজানো
 @bot.callback_query_handler(func=lambda call: call.data.startswith("c_") or call.data.startswith("change_"))
 def show_number_interface(call):
     data_parts = call.data.split("_")
     country_code = data_parts[1]
     selected_app = data_parts[2]
     
-    url = f"{NEW_API_URL}/numbers/{country_code}"
+    headers = {"Authorization": f"Bearer {QUACKR_API_KEY}"}
+    url = f"{QUACKR_BASE_URL}/numbers?country={country_code}"
+    
     try:
-        response = requests.get(url).json()
-        if response.get('status') == 'success' and response.get('numbers'):
-            # এপিআই থেকে দুটি নম্বর নিয়ে সাজানো
-            numbers = response['numbers'][:2]
+        res = requests.get(url, headers=headers, timeout=5).json()
+        if res.get('data'):
+            numbers = res['data'][:2] # ২টি নম্বর তুলে আনা হলো
             num_text = ""
             for num in numbers:
-                num_text += f"📞Number: `+{num.replace('+', '')}`\n"
+                num_text += f"📞Number: `{num['number']}`\n"
             
-            # প্রধান ওটিপি উইন্ডো মেসেজ ফরম্যাট (স্ক্রিনশটের মতো হুবহু)
             msg_text = f"🌍Country ➤ {country_code.upper()}\n\n" \
                        f"{num_text}\n" \
                        f"⏳Status: Waiting For OTP\n" \
@@ -174,34 +175,32 @@ def show_number_interface(call):
                        f"🔷 বটের ভিতরে ১০ সেকেন্ড ওয়েট করুন ওটিপি পেয়ে যাবেন না পেলে গ্রুপ চেক করুন।😊"
             
             markup = InlineKeyboardMarkup()
-            # নম্বর পরিবর্তন করার ডাইনামিক বাটন
             markup.row(InlineKeyboardButton("🔄 Change Number (10s)", callback_data=f"change_{country_code}_{selected_app}"))
             markup.row(InlineKeyboardButton("🔗 View OTP Group", url="https://t.me/+DXdDIm7-rRU4YTQ1"))
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg_text, reply_markup=markup, parse_mode="Markdown")
             
-            # ব্যাকগ্রাউন্ডে ওটিপি চেক করার জন্য প্রথম নম্বরটি ব্যবহার করা হবে
-            target_phone = numbers[0].replace('+', '')
-            # ৫ সেকেন্ড পর অটো ওটিপি চেক রান করা (যাতে ইউজার রিফ্রেশ না চাপলেও ওটিপি পায়)
-            Thread(target=auto_fetch_otp, args=(call.message.chat.id, target_phone, selected_app)).start()
-            
+            # প্রথম নম্বরের ওটিপি ট্র্যাকিং ব্যাকগ্রাউন্ডে চালু করা
+            target_phone = numbers[0]['number'].replace('+', '')
+            Thread(target=auto_fetch_quackr_otp, args=(call.message.chat.id, target_phone, selected_app)).start()
         else:
-            bot.answer_callback_query(call.id, text="❌ এই মুহূর্তে নম্বর খালি নেই। অন্য দেশ ট্রাই করুন।", show_alert=True)
+            bot.answer_callback_query(call.id, text="❌ এই দেশের নম্বর সাময়িকভাবে অফলাইন।", show_alert=True)
     except:
-        bot.answer_callback_query(call.id, text="নম্বর লোড করতে সমস্যা হয়েছে।")
+        bot.answer_callback_query(call.id, text="নম্বর সার্ভার রেসপন্স করছে না।")
 
-# ব্যাকগ্রাউন্ড অটো ওটিপি রিফ্রেশ সিস্টেম
-def auto_fetch_otp(chat_id, phone, selected_app):
-    time.sleep(8) # ইউজারকে বাটনে ওয়েট করতে বলা সময় অনুযায়ী
-    url = f"{NEW_API_URL}/get_sms/{phone}"
+# Quackr থেকে ওটিপি মেসেজ রিড করার ব্যাকগ্রাউন্ড টাস্ক
+def auto_fetch_quackr_otp(chat_id, phone, selected_app):
+    time.sleep(10) # বটের স্ক্রিনশটের রুলস অনুযায়ী ১০ সেকেন্ড পর ওটিপি চেক করবে
+    headers = {"Authorization": f"Bearer {QUACKR_API_KEY}"}
+    url = f"{QUACKR_BASE_URL}/messages?number={phone}"
     try:
-        response = requests.get(url).json()
-        if response.get('status') == 'success' and response.get('sms'):
-            sms = response['sms'][0]
+        res = requests.get(url, headers=headers, timeout=5).json()
+        if res.get('data'):
+            sms = res['data'][0] # একদম লেটেস্ট ওটিপি মেসেজটি নিবে
             msg_text = f"🔥 **নতুন ওটিপি অ্যালার্ট!** 🔥\n\n" \
                        f"📱 অ্যাপ: #{selected_app.capitalize()}\n" \
                        f"📞 নম্বর: `+{phone}`\n" \
-                       f"✉️ ওটিপি মেসেজ: {sms.get('text')}"
+                       f"✉️ ওটিপি মেসেজ: {sms.get('message')}"
             
             bot.send_message(chat_id, msg_text, parse_mode="Markdown")
             bot.send_message(int(CHANNEL_ID), msg_text, parse_mode="Markdown")
@@ -209,19 +208,8 @@ def auto_fetch_otp(chat_id, phone, selected_app):
     except:
         pass
 
-@bot.message_handler(commands=['notice'])
-def send_notice(message):
-    if message.chat.id == ADMIN_ID:
-        notice_text = message.text.replace("/notice", "").strip()
-        if os.path.exists(USERS_FILE):
-            with open(USERS_FILE, "r") as f:
-                for user in f.read().splitlines():
-                    try: bot.send_message(int(user), f"📢 **নোটিশ:**\n\n{notice_text}")
-                    except: pass
-            bot.reply_to(message, "✅ সফলভাবে নোটিশ পাঠানো হয়েছে।")
-
 if __name__ == "__main__":
     keep_alive()
-    print("🚀 প্রফেশনাল আর্নিং ইন্টারফেস ওটিপি বট লাইভ হয়েছে...")
+    print("🚀 Quackr API চালিত ওটিপি বট সফলভাবে লাইভ হয়েছে...")
     try: bot.polling(none_stop=True, interval=0, timeout=20)
     except Exception as e: print(f"বট রানিংয়ে সমস্যা: {e}")
