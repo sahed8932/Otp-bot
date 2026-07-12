@@ -14,7 +14,6 @@ def load_config():
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     else:
-        # এখানে আপনার আসল টোকেন ও এপিআই কি সরাসরি বসিয়ে দিতে পারেন
         default_config = {
             "BOT_TOKEN": "8979736100:AAGmW4eTItErzMpZBXviuJ_uEHClCwfLtQk", 
             "VOLTX_API_KEY": "MGYB4NMYU51", 
@@ -44,7 +43,7 @@ bot = telebot.TeleBot(config["BOT_TOKEN"])
 app = Flask('')
 
 @app.route('/')
-def home(): return "Voltx Dynamic Bot is Live!"
+def home(): return "Voltx Fixed GET Bot is Live!"
 
 def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 def keep_alive(): Thread(target=run).start()
@@ -162,24 +161,23 @@ def show_countries(call):
     markup.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text="🌍 **কোন দেশের নম্বর নিতে চান?**", reply_markup=markup)
 
+# --- এখানে GET মেথড এবং কুয়েরি প্যারামিটার দিয়ে ফিক্স করা হয়েছে ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("c_"))
 def request_number(call):
     _, country, selected_app = call.data.split("_")
     rid = config["SERVICES"][selected_app]["rids"].get(country)
     
-    # ইউআরএল টাইপো ফিক্স
     base_url = str(config['BASE_URL']).strip().rstrip('/')
     url = f"{base_url}/getnum"
     
     headers = {
-        "mauthapi": str(config["VOLTX_API_KEY"]).strip(), 
-        "Content-Type": "application/json"
+        "mauthapi": str(config["VOLTX_API_KEY"]).strip()
     }
-    payload = {"rid": str(rid)}
+    # বডিতে না পাঠিয়ে সরাসরি ইউআরএল প্যারামিটার আকারে পাঠানো হচ্ছে
+    params = {"rid": str(rid)}
     
     try:
-        # টাইমআউট বাড়িয়ে ২০ সেকেন্ড করা হলো স্লো রেসপন্স হ্যান্ডেল করতে
-        response = requests.post(url, json=payload, headers=headers, timeout=20)
+        response = requests.get(url, params=params, headers=headers, timeout=15)
         
         if response.status_code != 200:
             bot.answer_callback_query(call.id, text=f"❌ সার্ভার এরর: {response.status_code}", show_alert=True)
@@ -197,11 +195,11 @@ def request_number(call):
             
             Thread(target=auto_fetch_otp, args=(call.message.chat.id, current_rid, selected_app, num)).start()
         else:
-            bot.answer_callback_query(call.id, text=f"❌ প্যানেল মেসেজ: {res.get('message', 'নম্বর পাওয়া যায়নি')}", show_alert=True)
+            bot.answer_callback_query(call.id, text=f"❌ প্যানেল মেসেজ: {res.get('message', 'নম্বর খালি নেই')}", show_alert=True)
     except requests.exceptions.Timeout:
-        bot.answer_callback_query(call.id, text="⚠️ প্যানেল সার্ভার থেকে কোনো সাড়া পাওয়া যায়নি (Timeout)!", show_alert=True)
+        bot.answer_callback_query(call.id, text="⚠️ প্যানেল সার্ভার রেসপন্স করেনি (Timeout)!", show_alert=True)
     except Exception as e:
-        bot.answer_callback_query(call.id, text="⚠️ কানেকশন এরর! এপিআই কি অথবা লিংক চেক করুন।", show_alert=True)
+        bot.answer_callback_query(call.id, text="⚠️ কানেকশন ফেইল্ড! এপিআই কি সঠিক আছে তো?", show_alert=True)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("fetch_"))
 def manual_fetch(call):
@@ -250,5 +248,5 @@ if __name__ == "__main__":
     keep_alive()
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 অল-ইন-ওয়ান ফিক্সড ডাইনামিক বট লাইভ...")
+    print("🚀 GET মেথড ফিক্সড ডাইনামিক বট সচল...")
     bot.polling(none_stop=True)
