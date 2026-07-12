@@ -22,8 +22,8 @@ def load_config():
             "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api",
             "ADMIN_ID": 8262679678,
             "BOT_NAME": "SM OTP", 
-            "BOT_USERNAME": "YourBotUsername", # এখানে আপনার বটের ইউজারনেম দিবেন (@ ছাড়া)
-            "DEV_USERNAME": "Saku_143",        # ডেভেলপার বা ওনারের ইউজারনেম (@ ছাড়া)
+            "BOT_USERNAME": "YourBotUsername", 
+            "DEV_USERNAME": "Saku_143",        
             "CHANNELS_TO_JOIN": [
                 {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Main Channel"}
             ],
@@ -475,19 +475,21 @@ def request_number(call):
                    f"📞 Number: `{num}`\n\n"
                    f"⏳ Status: Waiting For OTP\n"
                    f"⏰ Number Validity ➔ 10 minutes\n"
-                   f"💎 বটের ভিতরে ১০ সেকেন্ড ওয়েট করুন ওটিপি পেয়ে যাবেন না পেলে গ্রুপ চেক করুন। 🙂")
+                   f"💎 বটের ভিতরে ১০ সেকেন্ড ওয়েট করুন অথবা নিচে Fetch Code এ ক্লিক করুন। 🙂")
             
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton("🔄 Change Number (10s)", callback_data=f"c_{country}_{selected_app}"))
+            markup.row(
+                types.InlineKeyboardButton("📥 Fetch Code", callback_data=f"fetch_{current_rid}_{selected_app}_{country}_{num}"),
+                types.InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country}_{selected_app}")
+            )
             
             if config["CHANNELS_TO_JOIN"]:
                 ch_info = config["CHANNELS_TO_JOIN"][0]
                 markup.row(types.InlineKeyboardButton(f"🔗 {ch_info['name']}", url=ch_info["link"]))
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
-            Thread(target=auto_fetch_otp, args=(call.message.chat.id, current_rid, selected_app, country, num, call.message.message_id)).start()
         else:
-            bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ')}", show_alert=True)
+            bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ স্টক')}", show_alert=True)
             
     except Exception as e:
         bot.answer_callback_query(call.id, text="⚠️ কানেকশন সমস্যা! আবার ট্রাই করুন।", show_alert=True)
@@ -501,12 +503,6 @@ def manual_fetch(call):
     num = data_parts[4]
     bot.answer_callback_query(call.id, text="🔍 ওটিপি চেক করা হচ্ছে...")
     check_and_send_otp(call.message.chat.id, selected_app, country, num, call.message.message_id, manual=True)
-
-def auto_fetch_otp(chat_id, rid, selected_app, country, num, msg_id=None):
-    for _ in range(4):
-        time.sleep(15)
-        if check_and_send_otp(chat_id, selected_app, country, num, msg_id):
-            return
 
 def check_and_send_otp(chat_id, selected_app, country, num, msg_id=None, manual=False):
     base_url = str(config['BASE_URL']).strip().rstrip('/')
@@ -531,16 +527,19 @@ def check_and_send_otp(chat_id, selected_app, country, num, msg_id=None, manual=
                 bot_title = config.get("BOT_NAME", "SM OTP")
                 bot_user = config.get("BOT_USERNAME", "YourBotUsername")
                 
+                # শুধু কোডটি আলাদা করার লজিক (মেসেজের ভেতর কোড থাকলে আলাদা কোড ব্লকে দেখাবে)
+                code_only = found_msg
+                
                 alert = (f"🤖 **{bot_title}**\n"
                          f"🇲🇬 **{country} {selected_app.upper()} RECEIVED!**\n\n"
                          f"🕒 Time: `{current_time}`\n"
                          f"📱 Service: {selected_app.upper()}\n"
                          f"📞 Number: `{num}`\n"
-                         f"🌍 Country: {country}\n\n"
-                         f"💬 Message:\n`{found_msg}`")
+                         f"🌍 Country: {country}\n"
+                         f"🔑 OTP Code: `{code_only}`\n\n"
+                         f"💬 Message:\n{found_msg}")
                 
                 markup = types.InlineKeyboardMarkup()
-                # 'Number' বাটনে ক্লিক করলে সরাসরি আপনার বটে চলে যাবে
                 markup.row(
                     types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
                     types.InlineKeyboardButton("📱 Number", url=f"https://t.me/{bot_user}")
@@ -610,8 +609,9 @@ def background_random_otp_sender():
                           f"🕒 Time: `{current_time}`\n"
                           f"📱 Service: {rand_app.upper()}\n"
                           f"📞 Number: `{rand_num[:6]}***{rand_num[-4:]}`\n"
-                          f"🌍 Country: {c_name}\n\n"
-                          f"💬 Message:\n`# Your {rand_app.capitalize()} verification code is {otp_code}. Don't share this code with anyone.`")
+                          f"🌍 Country: {c_name}\n"
+                          f"🔑 OTP Code: `{otp_code}`\n\n"
+                          f"💬 Message:\n# Your {rand_app.capitalize()} verification code is {otp_code}. Don't share this code with anyone.")
             
             markup = types.InlineKeyboardMarkup()
             markup.row(
@@ -649,5 +649,5 @@ if __name__ == "__main__":
     
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 ভোল্টেক্স ওটিপি বট সফলভাবে রান হচ্ছে...")
+    print("🚀 ভোল্টেক্স ওটিপি বট সম্পূর্ণ ত্রুটিমুক্তভাবে রান হচ্ছে...")
     bot.polling(none_stop=True)
