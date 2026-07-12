@@ -15,7 +15,7 @@ def load_config():
             return json.load(f)
     else:
         default_config = {
-            "BOT_TOKEN": "YOUR_BOT_TOKEN_HERE", 
+            "BOT_TOKEN": "8979736100:AAG_8ILyTgjuWxpSG1v2kgdRWv4nCPeycws", 
             "VOLTX_API_KEY": "MLPNN2HKYXD", 
             "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api",
             "ADMIN_ID": 8262679678, 
