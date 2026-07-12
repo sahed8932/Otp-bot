@@ -14,6 +14,7 @@ def load_config():
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     else:
+        # এখানে আপনার আসল টোকেন ও এপিআই কি সরাসরি বসিয়ে দিতে পারেন
         default_config = {
             "BOT_TOKEN": "8979736100:AAGmW4eTItErzMpZBXviuJ_uEHClCwfLtQk", 
             "VOLTX_API_KEY": "MGYB4NMYU51", 
@@ -166,12 +167,25 @@ def request_number(call):
     _, country, selected_app = call.data.split("_")
     rid = config["SERVICES"][selected_app]["rids"].get(country)
     
-    url = f"{config['BASE_URL']}/getnum"
-    headers = {"mauthapi": config["VOLTX_API_KEY"], "Content-Type": "application/json"}
+    # ইউআরএল টাইপো ফিক্স
+    base_url = str(config['BASE_URL']).strip().rstrip('/')
+    url = f"{base_url}/getnum"
+    
+    headers = {
+        "mauthapi": str(config["VOLTX_API_KEY"]).strip(), 
+        "Content-Type": "application/json"
+    }
     payload = {"rid": str(rid)}
     
     try:
-        res = requests.post(url, json=payload, headers=headers, timeout=10).json()
+        # টাইমআউট বাড়িয়ে ২০ সেকেন্ড করা হলো স্লো রেসপন্স হ্যান্ডেল করতে
+        response = requests.post(url, json=payload, headers=headers, timeout=20)
+        
+        if response.status_code != 200:
+            bot.answer_callback_query(call.id, text=f"❌ সার্ভার এরর: {response.status_code}", show_alert=True)
+            return
+            
+        res = response.json()
         if res.get("meta", {}).get("status") == "ok":
             num = res["data"].get("full_number") or res["data"].get("no_plus_number")
             current_rid = res.get("rid", rid)
@@ -181,12 +195,13 @@ def request_number(call):
             markup.row(types.InlineKeyboardButton("📥 Fetch Code", callback_data=f"fetch_{current_rid}_{selected_app}_{num}"))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
             
-            # ব্যাকগ্রাউন্ডে অটো ওটিপি চেক চালু
             Thread(target=auto_fetch_otp, args=(call.message.chat.id, current_rid, selected_app, num)).start()
         else:
-            bot.answer_callback_query(call.id, text=f"❌ এরর: {res.get('message')}", show_alert=True)
-    except:
-        bot.answer_callback_query(call.id, text="⚠️ এপিআই কানেকশন টাইমআউট!", show_alert=True)
+            bot.answer_callback_query(call.id, text=f"❌ প্যানেল মেসেজ: {res.get('message', 'নম্বর পাওয়া যায়নি')}", show_alert=True)
+    except requests.exceptions.Timeout:
+        bot.answer_callback_query(call.id, text="⚠️ প্যানেল সার্ভার থেকে কোনো সাড়া পাওয়া যায়নি (Timeout)!", show_alert=True)
+    except Exception as e:
+        bot.answer_callback_query(call.id, text="⚠️ কানেকশন এরর! এপিআই কি অথবা লিংক চেক করুন।", show_alert=True)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("fetch_"))
 def manual_fetch(call):
@@ -194,17 +209,17 @@ def manual_fetch(call):
     bot.answer_callback_query(call.id, text="🔍 ওটিপি চেক করা হচ্ছে...")
     auto_fetch_otp(call.message.chat.id, rid, selected_app, num, manual=True)
 
-# --- নতুন ডকুমেন্টেশন অনুযায়ী ওটিপি ক্যাচ করার মডিউল ---
 def auto_fetch_otp(chat_id, rid, selected_app, num, manual=False):
-    if not manual: time.sleep(15) # প্রথমবার অটোমেটিক ১৫ সেকেন্ড পর চেক করবে
-    url = f"{config['BASE_URL']}/success-otp"
-    headers = {"mauthapi": config["VOLTX_API_KEY"]}
+    if not manual: time.sleep(15)
+    base_url = str(config['BASE_URL']).strip().rstrip('/')
+    url = f"{base_url}/success-otp"
+    headers = {"mauthapi": str(config["VOLTX_API_KEY"]).strip()}
     
     try:
-        res = requests.get(url, headers=headers, timeout=10).json()
+        res = requests.get(url, headers=headers, timeout=15).json()
         if res.get("meta", {}).get("status") == "ok":
             otps_list = res.get("data", {}).get("otps", [])
-            clean_num = str(num).replace("+", "") # নম্বরের প্লাস (+) চিহ্ন বাদ দিয়ে ম্যাচ করার জন্য
+            clean_num = str(num).replace("+", "")
             
             found_msg = None
             for item in otps_list:
@@ -219,7 +234,7 @@ def auto_fetch_otp(chat_id, rid, selected_app, num, manual=False):
             else:
                 if manual: bot.send_message(chat_id, "⚠️ ওটিপি এখনও সার্ভারে পৌঁছায়নি। আবার ট্রাই করুন।")
         else:
-            if manual: bot.send_message(chat_id, "⚠️ প্যানেল সার্ভার থেকে কোনো ডেটা পাওয়া যায়নি।")
+            if manual: bot.send_message(chat_id, "⚠️ প্যানেল সার্ভার থেকে কোনো রেসপন্স পাওয়া যায়নি।")
     except:
         if manual: bot.send_message(chat_id, "❌ ওটিপি সার্ভার রেসপন্স করছে না।")
 
@@ -228,12 +243,12 @@ def back(call): send_services_menu(call.message.chat.id, call.message.message_id
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
 def check(call):
-    if is_subscribed(call.from_user.id): send_home_keyboard(call.message.chat.id, "✅ ভেরিফিকেশন সফল!")
+    if is_subscribed(call.from_user.id): send_home_keyboard(call.message.chat.id, "✅ ভেরিфикации সফল!")
     else: bot.answer_callback_query(call.id, text="❌ আপনি এখনও জয়েন করেননি!", show_alert=True)
 
 if __name__ == "__main__":
     keep_alive()
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 সংশোধিত ডাইনামিক ওটিপি বট সফলভাবে রান হয়েছে...")
+    print("🚀 অল-ইন-ওয়ান ফিক্সড ডাইনামিক বট লাইভ...")
     bot.polling(none_stop=True)
