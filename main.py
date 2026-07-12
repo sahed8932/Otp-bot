@@ -7,7 +7,7 @@ from telebot import types
 from flask import Flask
 from threading import Thread
 
-# --- কনফিগারেশন ফাইল সেটিংস (ড্যাশবোর্ড থেকে অটো আপডেট হবে) ---
+# --- কনফিগারেশন ফাইল সেটিংস ---
 CONFIG_FILE = "config.json"
 
 def load_config():
@@ -15,11 +15,10 @@ def load_config():
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     else:
-        # ডিফল্ট সেটিংস (প্রথমবার রান হলে এটি অটো তৈরি হবে)
         default_config = {
-            "BOT_TOKEN": "8979736100:AAHti1Q9R3iVKX3M-6-VijfJFs5jWc620A0", # আপনার টেলিগ্রাম বট টোকেন দিন
-            "VOLTX_API_KEY": "MGYB4NMYU51", # VoltxSMS API Key দিন
-            "ADMIN_ID": 8262679678, # এডমিন আইডি
+            "BOT_TOKEN": "8979736100:AAHti1Q9R3iVKX3M-6-VijfJFs5jWc620A0", 
+            "VOLTX_API_KEY": "MGYB4NMYU51", 
+            "ADMIN_ID": 8262679678, 
             "CHANNEL_ID": "-1003956226642",
             "GROUP_ID": "-1004309875319",
             "CHANNEL_LINK": "https://t.me/SHS_Otp_Channel",
@@ -63,7 +62,7 @@ def save_user(user_id):
 
 def is_subscribed(user_id):
     if user_id == config["ADMIN_ID"]:
-        return True # এডমিনের জন্য সাবস্ক্রিপশন চেক দরকার নেই
+        return True 
     try:
         channel_status = bot.get_chat_member(int(config["CHANNEL_ID"]), user_id).status
         group_status = bot.get_chat_member(int(config["GROUP_ID"]), user_id).status
@@ -78,13 +77,11 @@ def send_join_request(chat_id):
     markup.row(types.InlineKeyboardButton("✅ Joined", callback_data="check_membership"))
     bot.send_message(chat_id, "⚠️ সার্ভিসটি ব্যবহার করতে প্রথমে আমাদের ওটিপি চ্যানেল এবং গ্রুপে জয়েন করুন। তারপর '✅ Joined' বাটনে ক্লিক করুন।", reply_markup=markup)
 
-# হোম কিবোর্ড (এডমিন হলে আলাদা বাটন দেখাবে, ইউজার হলে দেখাবে না)
 def send_home_keyboard(chat_id, text="👋 ওটিপি ড্যাশবোর্ডে স্বাগতম! নিচের বাটন ব্যবহার করুন:"):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(types.KeyboardButton("📞 Get Number"), types.KeyboardButton("📊 Active Traffic"))
     markup.row(types.KeyboardButton("🌍 Available Countries"), types.KeyboardButton("🔐 2FA GENERATE"))
     
-    # শুধুমাত্র এডমিন এই বাটনটি দেখতে পাবে
     if chat_id == config["ADMIN_ID"]:
         markup.row(types.KeyboardButton("🛠 Admin Dashboard"))
         
@@ -111,7 +108,7 @@ def start_bot(message):
     else: 
         send_join_request(message.chat.id)
 
-# 🛠 --- বাটন-ভিত্তিক এডমিন ড্যাশবোর্ড ফাংশন ---
+# --- বাটন-ভিত্তিক এডমিন ড্যাশবোর্ড ---
 def show_admin_dashboard(chat_id):
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton("📢 Change Channel ID", callback_data="adm_setchannel"))
@@ -125,7 +122,7 @@ def show_admin_dashboard(chat_id):
                        f"• গ্রুপ আইডি: `{config['GROUP_ID']}`\n" \
                        f"• চ্যানেল লিংক: {config['CHANNEL_LINK']}\n" \
                        f"• গ্রুপ লিংক: {config['GROUP_LINK']}\n\n" \
-                       f"নিচের বাটনে ক্লিক করে যেকোনো সেটিংস সরাসরি পরিবর্তন করতে পারেন। "
+                       f"নিচের বাটনে ক্লিক করে যেকোনো সেটিংস সরাসরি পরিবর্তন করতে পারেন।"
     bot.send_message(chat_id, current_settings, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_"))
@@ -134,7 +131,8 @@ def handle_admin_clicks(call):
         return
         
     action = call.data
-    bot.delete_message(call.message.chat.id, call.message.message_id)
+    try: bot.delete_message(call.message.chat.id, call.message.message_id)
+    except: pass
     
     if action == "adm_setchannel":
         msg = bot.send_message(call.message.chat.id, "👉 নতুন **চ্যানেল আইডি** টাইপ করে পাঠান (যেমন: -100xxxxxxxxx):")
@@ -152,11 +150,13 @@ def handle_admin_clicks(call):
         msg = bot.send_message(call.message.chat.id, "✉️ সব ইউজারের কাছে পাঠানোর জন্য আপনার **নোটিশটি** টাইপ করে পাঠান:")
         bot.register_next_step_handler(msg, process_broadcast_notice)
 
+# এখানে global config-কে ফাংশনের একদম শুরুতে নিয়ে আসা হয়েছে
 def save_admin_setting(message, key_name):
-    if message.chat.id != config["ADMIN_ID"]: return
+    global config
+    if message.chat.id != config["ADMIN_ID"]: 
+        return
     new_value = message.text.strip()
     
-    global config
     config[key_name] = new_value
     save_config(config)
     
@@ -224,14 +224,13 @@ def get_countries_for_app(call):
     try: bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=text, reply_markup=markup, parse_mode="Markdown")
     except: bot.send_message(call.message.chat.id, text, reply_markup=markup)
 
-# --- VoltxSMS থেকে পিওর নম্বর নেওয়ার ইন্টারফেস ---
+# --- VoltxSMS নম্বর ইন্টারফেস ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("c_") or call.data.startswith("change_"))
 def show_number_interface(call):
     data_parts = call.data.split("_")
     country_code = data_parts[1].upper()
     selected_app = data_parts[2]
     
-    # VoltxSMS এর রিয়েল API এন্ডপয়েন্ট ও প্যারামিটারস
     voltx_url = "https://voltxsms.com/api/v1/get-number" 
     payload = {
         "api_key": config["VOLTX_API_KEY"],
@@ -242,7 +241,6 @@ def show_number_interface(call):
     try:
         res = requests.get(voltx_url, params=payload, timeout=7).json()
         
-        # VoltxSMS API সফল হলে এবং নম্বর প্রোভাইড করলে
         if res.get('status') == 'success' or res.get('number'):
             num1 = res.get('number')
             order_id = res.get('order_id')
@@ -263,11 +261,9 @@ def show_number_interface(call):
             try: bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg_text, reply_markup=markup, parse_mode="Markdown")
             except: bot.send_message(call.message.chat.id, msg_text, reply_markup=markup, parse_mode="Markdown")
             
-            # অটো ব্যাকগ্রাউন্ড ওটিপি ফেচিং শুরু হবে
             Thread(target=auto_fetch_voltx_otp, args=(call.message.chat.id, order_id, selected_app, num1, False)).start()
             
         else:
-            # API এ কোনো নম্বর না থাকলে বা এরর আসলে ফেক নম্বর দেখাবে না
             bot.answer_callback_query(call.id, text="❌ দুঃখিত, এই মুহূর্তে VoltxSMS সার্ভারে কোনো নম্বর খালি নেই!", show_alert=True)
     except:
         bot.answer_callback_query(call.id, text="⚠️ VoltxSMS API সার্ভার রেসপন্স করছে না। পরে চেষ্টা করুন।", show_alert=True)
@@ -282,7 +278,6 @@ def manual_fetch_trigger(call):
     bot.answer_callback_query(call.id, text="🔍 ওটিপি কোড খোঁজা হচ্ছে...", show_alert=False)
     auto_fetch_voltx_otp(call.message.chat.id, order_id, selected_app, phone, manual=True)
 
-# VoltxSMS থেকে ওটিপি চেক করার ফাংশন
 def auto_fetch_voltx_otp(chat_id, order_id, selected_app, phone, manual=False):
     if not manual:
         time.sleep(10)
@@ -303,7 +298,6 @@ def auto_fetch_voltx_otp(chat_id, order_id, selected_app, phone, manual=False):
                        f"✉️ ওটিপি মেসেজ: {sms_msg}"
             
             bot.send_message(chat_id, msg_text, parse_mode="Markdown")
-            # এডমিনের সেট করা গ্রুপ এবং চ্যানেলে লাইভ ওটিপি রিয়াল-টাইম ফরওয়ার্ড হবে
             bot.send_message(int(config["CHANNEL_ID"]), msg_text, parse_mode="Markdown")
             bot.send_message(int(config["GROUP_ID"]), msg_text, parse_mode="Markdown")
         else:
@@ -314,6 +308,6 @@ def auto_fetch_voltx_otp(chat_id, order_id, selected_app, phone, manual=False):
 
 if __name__ == "__main__":
     keep_alive()
-    print("🚀 বাটন-ভিত্তিক এডমিন ড্যাশবোর্ড ও পিওর VoltxSMS ওটিপি বট লাইভ হয়েছে...")
+    print("🚀 VoltxSMS ওটিপি বট সফলভাবে রিলিজ হয়েছে...")
     try: bot.polling(none_stop=True, interval=0, timeout=20)
     except Exception as e: print(f"বট রানিংয়ে সমস্যা: {e}")
