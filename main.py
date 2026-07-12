@@ -15,10 +15,9 @@ def load_config():
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     else:
-        # ডিফল্ট কনফিগারেশন কাঠামো
         default_config = {
             "BOT_TOKEN": "8979736100:AAHti1Q9R3iVKX3M-6-VijfJFs5jWc620A0", 
-            "VOLTX_API_KEY": "YOUR_VOLTXSMS_API_KEY", 
+            "VOLTX_API_KEY": "MGYB4NMYU51", 
             "ADMIN_ID": 8262679678, 
             "CHANNEL_ID": "-1003956226642",
             "GROUP_ID": "-1004309875319",
@@ -109,7 +108,6 @@ def start_bot(message):
     else: 
         send_join_request(message.chat.id)
 
-# --- বাটন-ভিত্তিক এডমিন ড্যাশবোর্ড (আপডেটেড) ---
 def show_admin_dashboard(chat_id):
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton("🔑 Change Voltx API Key", callback_data="adm_setvoltx"))
@@ -130,9 +128,7 @@ def show_admin_dashboard(chat_id):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_"))
 def handle_admin_clicks(call):
-    if call.message.chat.id != config["ADMIN_ID"]:
-        return
-        
+    if call.message.chat.id != config["ADMIN_ID"]: return
     action = call.data
     try: bot.delete_message(call.message.chat.id, call.message.message_id)
     except: pass
@@ -141,10 +137,10 @@ def handle_admin_clicks(call):
         msg = bot.send_message(call.message.chat.id, "👉 আপনার নতুন **VoltxSMS API Key** টি টাইপ করে পাঠান:")
         bot.register_next_step_handler(msg, save_admin_setting, "VOLTX_API_KEY")
     elif action == "adm_setchannel":
-        msg = bot.send_message(call.message.chat.id, "👉 নতুন **চ্যানেল আইডি** টাইপ করে পাঠান (যেমন: -100xxxxxxxxx):")
+        msg = bot.send_message(call.message.chat.id, "👉 নতুন **চ্যানেল আইডি** টাইপ করে পাঠান:")
         bot.register_next_step_handler(msg, save_admin_setting, "CHANNEL_ID")
     elif action == "adm_setgroup":
-        msg = bot.send_message(call.message.chat.id, "👉 নতুন **গ্রুপ আইডি** টাইপ করে পাঠান (যেমন: -100xxxxxxxxx):")
+        msg = bot.send_message(call.message.chat.id, "👉 নতুন **গ্রুপ আইডি** টাইপ করে পাঠান:")
         bot.register_next_step_handler(msg, save_admin_setting, "GROUP_ID")
     elif action == "adm_setchlink":
         msg = bot.send_message(call.message.chat.id, "👉 নতুন **চ্যানেল লিংক** টাইপ করে পাঠান:")
@@ -158,20 +154,16 @@ def handle_admin_clicks(call):
 
 def save_admin_setting(message, key_name):
     global config
-    if message.chat.id != config["ADMIN_ID"]: 
-        return
+    if message.chat.id != config["ADMIN_ID"]: return
     new_value = message.text.strip()
-    
     config[key_name] = new_value
     save_config(config)
-    
     bot.send_message(message.chat.id, f"✅ সফলভাবে `{key_name}` আপডেট করা হয়েছে।")
     show_admin_dashboard(message.chat.id)
 
 def process_broadcast_notice(message):
     if message.chat.id != config["ADMIN_ID"]: return
     notice_text = message.text.strip()
-    
     bot.send_message(message.chat.id, "⏳ নোটিশ পাঠানো শুরু হয়েছে...")
     count = 0
     if os.path.exists(USERS_FILE):
@@ -190,7 +182,6 @@ def handle_text_buttons(message):
     if not is_subscribed(message.chat.id):
         send_join_request(message.chat.id)
         return
-
     if message.text == "📞 Get Number":
         send_services_menu(message.chat.id)
     elif message.text == "📊 Active Traffic":
@@ -219,17 +210,16 @@ def back_to_main(call):
 def get_countries_for_app(call):
     selected_app = call.data.split("_")[1]
     markup = types.InlineKeyboardMarkup()
-    
     markup.row(types.InlineKeyboardButton("🇺🇸 United States", callback_data=f"c_US_{selected_app}"), types.InlineKeyboardButton("🇬🇧 United Kingdom", callback_data=f"c_GB_{selected_app}"))
     markup.row(types.InlineKeyboardButton("🇨🇦 Canada", callback_data=f"c_CA_{selected_app}"), types.InlineKeyboardButton("🇫🇷 France", callback_data=f"c_FR_{selected_app}"))
     markup.row(types.InlineKeyboardButton("🇲🇳 Myanmar", callback_data=f"c_MM_{selected_app}"), types.InlineKeyboardButton("🇻🇪 Venezuela", callback_data=f"c_VE_{selected_app}"))
-    
     markup.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
+    
     text = f"📱 Service: **{selected_app.capitalize()}**\n🌍 **Select Country:**"
     try: bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=text, reply_markup=markup, parse_mode="Markdown")
     except: bot.send_message(call.message.chat.id, text, reply_markup=markup)
 
-# --- VoltxSMS নম্বর ইন্টারফেস ---
+# --- 🛠 উন্নত ডায়াগনস্টিকসহ VoltxSMS নম্বর রিকোয়েস্ট ইন্টারফেস ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("c_") or call.data.startswith("change_"))
 def show_number_interface(call):
     data_parts = call.data.split("_")
@@ -244,35 +234,64 @@ def show_number_interface(call):
     }
 
     try:
-        res = requests.get(voltx_url, params=payload, timeout=7).json()
+        # Render টার্মিনালে ডিবাগিং ডেটা প্রিন্ট হবে
+        print(f"📡 Requesting VoltxSMS API... Payload: {payload}")
+        response = requests.get(voltx_url, params=payload, timeout=10)
+        print(f"📥 Response Code: {response.status_code} | Raw Text: {response.text}")
         
-        if res.get('status') == 'success' or res.get('number'):
-            num1 = res.get('number')
-            order_id = res.get('order_id')
+        raw_res = response.text.strip()
+
+        if response.status_code != 200:
+            bot.answer_callback_query(call.id, text=f"❌ সার্ভার এরর! (HTTP Code: {response.status_code})", show_alert=True)
+            return
+
+        # ১. রেসপন্সটি যদি JSON ফরম্যাটে হয় (যেমন আধুনিক API কাঠামোর ক্ষেত্রে)
+        try:
+            res_json = response.json()
+            if isinstance(res_json, dict) and (res_json.get('status') == 'success' or 'number' in res_json):
+                num1 = res_json.get('number')
+                order_id = res_json.get('order_id', 'NO_ID')
+                process_successful_number(call, country_code, selected_app, num1, order_id)
+                return
+            else:
+                err_text = res_json.get('message', raw_res) if isinstance(res_json, dict) else raw_res
+                bot.answer_callback_query(call.id, text=f"❌ Voltx রেসপন্স: {err_text}", show_alert=True)
+                return
+        except ValueError:
+            # ২. রেসপন্সটি যদি প্লেইন টেক্সট ফরম্যাটে হয় (যেমন: ACCESS_NUMBER:ORDER_ID:NUMBER)
+            if ":" in raw_res:
+                parts = raw_res.split(":")
+                if len(parts) >= 3:
+                    order_id = parts[1]
+                    num1 = parts[2]
+                    process_successful_number(call, country_code, selected_app, num1, order_id)
+                    return
             
-            msg_text = f"🌍 Country ➤ {country_code}\n\n" \
-                       f"📞 Number: `{num1}`\n\n" \
-                       f"⏳ Status: Waiting For OTP\n" \
-                       f"🔷 ওটিপি পেতে নিচের '📥 Fetch Code' বাটনে ক্লিক করুন অথবা ১০ সেকেন্ড অপেক্ষা করুন।"
-            
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton("🔄 Change Number", callback_data=f"change_{country_code.lower()}_{selected_app}"))
-            markup.row(
-                types.InlineKeyboardButton("📢 OTP Channel", url=config["CHANNEL_LINK"]),
-                types.InlineKeyboardButton("💬 OTP Group", url=config["GROUP_LINK"])
-            )
-            markup.row(types.InlineKeyboardButton("📥 Fetch Code", callback_data=f"fetch_{order_id}_{selected_app}_{num1}"))
-            
-            try: bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg_text, reply_markup=markup, parse_mode="Markdown")
-            except: bot.send_message(call.message.chat.id, msg_text, reply_markup=markup, parse_mode="Markdown")
-            
-            Thread(target=auto_fetch_voltx_otp, args=(call.message.chat.id, order_id, selected_app, num1, False)).start()
-            
-        else:
-            bot.answer_callback_query(call.id, text="❌ VoltxSMS রেসপন্স: নম্বর উপলব্ধ নেই বা ব্যালেন্স শেষ!", show_alert=True)
+            # ৩. অন্যান্য সম্ভাব্য টেক্সট এরর মেসেজ হ্যান্ডলিং (যেমন: BAD_KEY, NO_BALANCE)
+            bot.answer_callback_query(call.id, text=f"⚠️ সার্ভার মেসেজ: {raw_res[:60]}", show_alert=True)
+
     except Exception as e:
-        print(f"❌ VoltxSMS API Error Connection: {e}")
-        bot.answer_callback_query(call.id, text=f"⚠️ এপিআই এরর! আপনার ড্যাশবোর্ড থেকে API Key চেক করুন।", show_alert=True)
+        print(f"❌ VoltxSMS API Exception: {e}")
+        bot.answer_callback_query(call.id, text=f"⚠️ কানেকশন ফেল্ড: {str(e)[:50]}", show_alert=True)
+
+def process_successful_number(call, country_code, selected_app, num1, order_id):
+    msg_text = f"🌍 Country ➤ {country_code}\n\n" \
+               f"📞 Number: `{num1}`\n\n" \
+               f"⏳ Status: Waiting For OTP\n" \
+               f"🔷 ওটিপি পেতে নিচের '📥 Fetch Code' বাটনে ক্লিক করুন অথবা ১০ সেকেন্ড অপেক্ষা করুন।"
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.row(types.InlineKeyboardButton("🔄 Change Number", callback_data=f"change_{country_code.lower()}_{selected_app}"))
+    markup.row(
+        types.InlineKeyboardButton("📢 OTP Channel", url=config["CHANNEL_LINK"]),
+        types.InlineKeyboardButton("💬 OTP Group", url=config["GROUP_LINK"])
+    )
+    markup.row(types.InlineKeyboardButton("📥 Fetch Code", callback_data=f"fetch_{order_id}_{selected_app}_{num1}"))
+    
+    try: bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg_text, reply_markup=markup, parse_mode="Markdown")
+    except: bot.send_message(call.message.chat.id, msg_text, reply_markup=markup, parse_mode="Markdown")
+    
+    Thread(target=auto_fetch_voltx_otp, args=(call.message.chat.id, order_id, selected_app, num1, False)).start()
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("fetch_"))
 def manual_fetch_trigger(call):
@@ -280,19 +299,13 @@ def manual_fetch_trigger(call):
     order_id = data_parts[1]
     selected_app = data_parts[2]
     phone = data_parts[3]
-    
     bot.answer_callback_query(call.id, text="🔍 ওটিপি কোড খোঁজা হচ্ছে...", show_alert=False)
     auto_fetch_voltx_otp(call.message.chat.id, order_id, selected_app, phone, manual=True)
 
 def auto_fetch_voltx_otp(chat_id, order_id, selected_app, phone, manual=False):
-    if not manual:
-        time.sleep(10)
-        
+    if not manual: time.sleep(10)
     voltx_otp_url = "https://voltxsms.com/api/v1/get-otp"
-    payload = {
-        "api_key": config["VOLTX_API_KEY"],
-        "order_id": order_id
-    }
+    payload = {"api_key": config["VOLTX_API_KEY"], "order_id": order_id}
     
     try:
         res = requests.get(voltx_otp_url, params=payload, timeout=6).json()
@@ -302,23 +315,18 @@ def auto_fetch_voltx_otp(chat_id, order_id, selected_app, phone, manual=False):
                        f"📱 অ্যাপ: #{selected_app.capitalize()}\n" \
                        f"📞 নম্বর: `{phone}`\n" \
                        f"✉️ ওটিপি মেসেজ: {sms_msg}"
-            
             bot.send_message(chat_id, msg_text, parse_mode="Markdown")
             bot.send_message(int(config["CHANNEL_ID"]), msg_text, parse_mode="Markdown")
             bot.send_message(int(config["GROUP_ID"]), msg_text, parse_mode="Markdown")
         else:
-            if manual:
-                bot.send_message(chat_id, "⚠️ ওটিপি এখনো আসেনি! অ্যাপ থেকে রিসেন্ড করে পুনরায় চেষ্টা করুন।")
+            if manual: bot.send_message(chat_id, "⚠️ ওটিপি এখনো আসেনি! অ্যাপ থেকে রিসেন্ড করে পুনরায় চেষ্টা করুন।")
     except:
         if manual: bot.send_message(chat_id, "❌ ওটিপি সার্ভার রেসপন্স করেনি।")
 
 if __name__ == "__main__":
     keep_alive()
-    try:
-        bot.delete_webhook(drop_pending_updates=True)
-        time.sleep(1)
+    try: bot.delete_webhook(drop_pending_updates=True); time.sleep(1)
     except: pass
-        
     print("🚀 বাটন-ভিত্তিক ড্যাশবোর্ডসহ ওটিপি বট সম্পূর্ণ রেডি...")
     try: bot.polling(none_stop=True, interval=0, timeout=20)
     except Exception as e: print(f"বট রানিংয়ে সমস্যা: {e}")
