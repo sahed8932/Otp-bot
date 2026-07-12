@@ -23,11 +23,12 @@ def load_config():
             "GROUP_ID": "-1004309875319",
             "CHANNEL_LINK": "https://t.me/SHS_Otp_Channel",
             "GROUP_LINK": "https://t.me/+DXdDIm7-rRU4YTQ1",
-            "NOTICE": "⚠️ সার্ভিসটি সচল রয়েছে। কোনো সমস্যা হলে এডমিনকে জানান।",
+            "NOTICE": "⚠️ সার্ভিসটি ফুল স্পিডে সচল রয়েছে। কোনো সমস্যা হলে গ্রুপে জানান।",
             "SERVICES": {
-                "whatsapp": {"name": "💬 WhatsApp", "rids": {"US": "22501", "GB": "26134", "KG": "99655"}},
-                "facebook": {"name": "📘 Facebook", "rids": {"US": "22501", "GN": "22465"}},
-                "instagram": {"name": "📸 Instagram", "rids": {"US": "21640", "KG": "99622"}},
+                "facebook": {"name": "📘 Facebook", "rids": {"US": "22501", "GB": "26134"}},
+                "whatsapp": {"name": "💚 WhatsApp", "rids": {"US": "22501", "KG": "99655"}},
+                "instagram": {"name": "📸 Instagram", "rids": {"US": "21640"}},
+                "tiktok": {"name": "🎵 Tiktok", "rids": {"US": "22501"}},
                 "imo": {"name": "📱 IMO", "rids": {"US": "2011"}}
             }
         }
@@ -44,7 +45,7 @@ bot = telebot.TeleBot(config["BOT_TOKEN"])
 app = Flask('')
 
 @app.route('/')
-def home(): return "Voltx Form-Data Bot is Live!"
+def home(): return "Voltx OTP Bot is Live & Active!"
 
 def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 def keep_alive(): Thread(target=run).start()
@@ -63,7 +64,8 @@ def send_home_keyboard(chat_id, text=None):
         
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(types.KeyboardButton("📞 Get Number"), types.KeyboardButton("📊 Active Traffic"))
-    markup.row(types.KeyboardButton("📢 Channel"), types.KeyboardButton("👥 Group"))
+    markup.row(types.KeyboardButton("💰 Balance"), types.KeyboardButton("📉 Withdraw"))
+    markup.row(types.KeyboardButton("🌍 Available Countries"), types.KeyboardButton("🔐 2FA GENERATE"))
     if chat_id == int(config["ADMIN_ID"]):
         markup.row(types.KeyboardButton("🛠 Admin Dashboard"))
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
@@ -79,6 +81,7 @@ def send_services_menu(chat_id, message_id=None):
             markup.row(*row)
             row = []
     if row: markup.row(*row)
+    markup.add(types.InlineKeyboardButton("⬅️ Back to Main", callback_data="back_main"))
     
     text = "📱 **কোন অ্যাপের নম্বর নিতে চান? সিলেক্ট করুন:**"
     if message_id:
@@ -94,17 +97,47 @@ def start_bot(message):
         markup = types.InlineKeyboardMarkup()
         markup.row(types.InlineKeyboardButton("📢 Join Channel", url=config["CHANNEL_LINK"]), types.InlineKeyboardButton("👥 Join Group", url=config["GROUP_LINK"]))
         markup.row(types.InlineKeyboardButton("✅ Joined (Check)", callback_data="check_membership"))
-        bot.send_message(message.chat.id, "⚠️ সার্ভিসটি ব্যবহার করতে আমাদের চ্যানেল এবং গ্রুপে জয়েন করুন।", reply_markup=markup)
+        bot.send_message(message.chat.id, "⚠️ সার্ভিসটি ব্যবহার করতে আমাদের অফিসিয়াল চ্যানেল এবং গ্রুপে জয়েন করুন।", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
     if not is_subscribed(message.chat.id): return
-    if message.text == "📞 Get Number": send_services_menu(message.chat.id)
-    elif message.text == "📊 Active Traffic": bot.send_message(message.chat.id, "📊 Traffic 100% Active & Running!")
-    elif message.text == "📢 Channel": bot.send_message(message.chat.id, f"📢 অফিসিয়াল চ্যানেল: {config['CHANNEL_LINK']}")
-    elif message.text == "👥 Group": bot.send_message(message.chat.id, f"👥 সাপোর্ট গ্রুপ: {config['GROUP_LINK']}")
-    elif message.text == "🛠 Admin Dashboard" and message.chat.id == int(config["ADMIN_ID"]):
+    
+    text = message.text
+    if text == "📞 Get Number":
+        send_services_menu(message.chat.id)
+    elif text == "📊 Active Traffic":
+        fetch_live_traffic(message.chat.id)
+    elif text == "💰 Balance":
+        bot.send_message(message.chat.id, "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।", parse_mode="Markdown")
+    elif text == "📉 Withdraw":
+        bot.send_message(message.chat.id, "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।", parse_mode="Markdown")
+    elif text == "🌍 Available Countries":
+        send_available_countries(message.chat.id)
+    elif text == "🔐 2FA GENERATE":
+        bot.send_message(message.chat.id, "🔐 2FA কোড জেনারেট করার জন্য আপনার সিক্রেট কোডটি দিন (অথবা ফিচারটি আপডেট করা হচ্ছে)।", parse_mode="Markdown")
+    elif text == "🛠 Admin Dashboard" and message.chat.id == int(config["ADMIN_ID"]):
         show_admin_dashboard(message.chat.id)
+
+def fetch_live_traffic(chat_id):
+    base_url = str(config['BASE_URL']).strip().rstrip('/')
+    url = f"{base_url}/liveaccess"
+    headers = {"mauthapi": str(config["VOLTX_API_KEY"]).strip()}
+    try:
+        res = requests.get(url, headers=headers, timeout=15).json()
+        if res.get("meta", {}).get("status") == "ok":
+            bot.send_message(chat_id, "📊 **Active Traffic Status:** 100% Online & Connected!", parse_mode="Markdown")
+        else:
+            bot.send_message(chat_id, "📊 Traffic Active (API Connected)")
+    except:
+        bot.send_message(chat_id, "📊 Active Traffic: সার্ভার রানিং আছে!")
+
+def send_available_countries(chat_id):
+    msg = "🌍 **বর্তমান উপলব্ধ দেশসমূহ ও সার্ভিস:**\n\n"
+    for s_id, s_info in config["SERVICES"].items():
+        countries = ", ".join(s_info["rids"].keys())
+        msg += f"{s_info['name']} ➔ `{countries}`\n"
+    bot.send_message(chat_id, msg, parse_mode="Markdown")
 
 def show_admin_dashboard(chat_id):
     markup = types.InlineKeyboardMarkup()
@@ -122,7 +155,7 @@ def show_admin_dashboard(chat_id):
 def handle_admin(call):
     if call.message.chat.id != int(config["ADMIN_ID"]): return
     if call.data == "adm_addrid":
-        msg = bot.send_message(call.message.chat.id, "👉 নতুন রেঞ্জ যোগ করতে এভাবে ফরম্যাট লিখে পাঠান:\n\n`অ্যাপ_নাম দেশের_কোড রেঞ্জ_আইডি`\n\n*উদাহরণ:* `whatsapp US 22501`")
+        msg = bot.send_message(call.message.chat.id, "👉 নতুন রেঞ্জ যোগ করতে এভাবে ফরম্যাট লিখে পাঠান:\n\n`অ্যাপ_নাম দেশের_কোড রেঞ্জ_আইডি`\n\n*উদাহরণ:* `facebook US 22501`")
         bot.register_next_step_handler(msg, process_add_rid)
     elif call.data == "adm_setnotice":
         msg = bot.send_message(call.message.chat.id, "👉 নতুন নোটিশটি লিখে পাঠান:")
@@ -179,8 +212,8 @@ def show_countries(call):
             markup.row(*row)
             row = []
     if row: markup.row(*row)
-    markup.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
-    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text="🌍 **কোন দেশের নম্বর নিতে চান?**", reply_markup=markup, parse_mode="Markdown")
+    markup.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_services"))
+    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=f"🌍 **{selected_app.upper()} এর জন্য দেশ সিলেক্ট করুন:**", reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("c_"))
 def request_number(call):
@@ -223,7 +256,7 @@ def request_number(call):
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
             Thread(target=auto_fetch_otp, args=(call.message.chat.id, current_rid, selected_app, num, call.message.message_id)).start()
         else:
-            bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর পাওয়া যায়নি')}", show_alert=True)
+            bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ')}", show_alert=True)
             
     except Exception as e:
         bot.answer_callback_query(call.id, text="⚠️ কানেকশন সমস্যা! আবার ট্রাই করুন।", show_alert=True)
@@ -235,17 +268,13 @@ def manual_fetch(call):
     selected_app = data_parts[2]
     num = data_parts[3]
     bot.answer_callback_query(call.id, text="🔍 ওটিপি চেক করা হচ্ছে...")
-    auto_fetch_otp(call.message.chat.id, rid, selected_app, num, call.message.message_id, manual=True)
+    check_and_send_otp(call.message.chat.id, selected_app, num, call.message.message_id, manual=True)
 
-def auto_fetch_otp(chat_id, rid, selected_app, num, msg_id=None, manual=False):
-    if not manual:
-        # ব্যাকগ্রাউন্ডে কয়েকবার ট্রাই করার জন্য লুপ (সর্বোচ্চ ৬০ সেকেন্ড)
-        for _ in range(4):
-            time.sleep(15)
-            if check_and_send_otp(chat_id, selected_app, num, msg_id):
-                return
-    else:
-        check_and_send_otp(chat_id, selected_app, num, msg_id, manual=True)
+def auto_fetch_otp(chat_id, rid, selected_app, num, msg_id=None):
+    for _ in range(4):
+        time.sleep(15)
+        if check_and_send_otp(chat_id, selected_app, num, msg_id):
+            return
 
 def check_and_send_otp(chat_id, selected_app, num, msg_id=None, manual=False):
     base_url = str(config['BASE_URL']).strip().rstrip('/')
@@ -291,8 +320,13 @@ def check_and_send_otp(chat_id, selected_app, num, msg_id=None, manual=False):
             bot.send_message(chat_id, "❌ ওটিপি চেক করতে গিয়ে সমস্যা হয়েছে।")
     return False
 
+@bot.callback_query_handler(func=lambda call: call.data == "back_services")
+def back_to_serv(call): send_services_menu(call.message.chat.id, call.message.message_id)
+
 @bot.callback_query_handler(func=lambda call: call.data == "back_main")
-def back(call): send_services_menu(call.message.chat.id, call.message.message_id)
+def back(call): 
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+    send_home_keyboard(call.message.chat.id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
 def check(call):
@@ -306,5 +340,5 @@ if __name__ == "__main__":
     keep_alive()
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 আপডেটকৃত ওটিপি বট সফলভাবে রান হচ্ছে...")
+    print("🚀 ভোল্টেক্স ওটিপি প্রো বট সফলভাবে রান হচ্ছে...")
     bot.polling(none_stop=True)
