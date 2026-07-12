@@ -16,8 +16,8 @@ def load_config():
     else:
         default_config = {
             "BOT_TOKEN": "8979736100:AAGmW4eTItErzMpZBXviuJ_uEHClCwfLtQk", 
-            "VOLTX_API_KEY": "MGYB4NMYU51", 
-            "BASE_URL": "https://api.2co9.cloud/MXS47FLFX0U/tnevs/@public/api",
+            "VOLTX_API_KEY": "MLPNN2HKYXD", 
+            "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api",
             "ADMIN_ID": 8262679678, 
             "CHANNEL_ID": "-1003956226642",
             "GROUP_ID": "-1004309875319",
@@ -43,7 +43,7 @@ bot = telebot.TeleBot(config["BOT_TOKEN"])
 app = Flask('')
 
 @app.route('/')
-def home(): return "Voltx Fixed GET Bot is Live!"
+def home(): return "Voltx Form-Data Bot is Live!"
 
 def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 def keep_alive(): Thread(target=run).start()
@@ -161,7 +161,7 @@ def show_countries(call):
     markup.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_main"))
     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text="🌍 **কোন দেশের নম্বর নিতে চান?**", reply_markup=markup)
 
-# --- এখানে GET মেথড এবং কুয়েরি প্যারামিটার দিয়ে ফিক্স করা হয়েছে ---
+# --- এই ফাংশনটি এখন পিওর POST মেথড এবং প্যানেল ফরম্যাট মেনে ডেটা পাঠাবে ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("c_"))
 def request_number(call):
     _, country, selected_app = call.data.split("_")
@@ -173,14 +173,20 @@ def request_number(call):
     headers = {
         "mauthapi": str(config["VOLTX_API_KEY"]).strip()
     }
-    # বডিতে না পাঠিয়ে সরাসরি ইউআরএল প্যারামিটার আকারে পাঠানো হচ্ছে
-    params = {"rid": str(rid)}
+    
+    # পোস্ট রিকোয়েস্টের বডিতে সরাসরি ডিকশনারি পাস করা হলো (অ্যাপ্লিকেশন/জেসন ওভারহেড ছাড়া)
+    payload = {"rid": str(rid)}
     
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=15)
+        # প্লেগ্রাউন্ডের মতো হুবহু POST রিকোয়েস্ট পাঠানো হচ্ছে
+        response = requests.post(url, data=payload, headers=headers, timeout=20)
         
+        # যদি প্রথমবার ব্যর্থ হয়, তবে raw json পে-লোড দিয়ে ব্যাকআপ ট্রাই করবে
+        if response.status_code != 200 or "bad_request" in response.text:
+            response = requests.post(url, json=payload, headers=headers, timeout=20)
+            
         if response.status_code != 200:
-            bot.answer_callback_query(call.id, text=f"❌ সার্ভার এরর: {response.status_code}", show_alert=True)
+            bot.answer_callback_query(call.id, text=f"❌ সার্ভার কোড: {response.status_code}", show_alert=True)
             return
             
         res = response.json()
@@ -195,11 +201,10 @@ def request_number(call):
             
             Thread(target=auto_fetch_otp, args=(call.message.chat.id, current_rid, selected_app, num)).start()
         else:
-            bot.answer_callback_query(call.id, text=f"❌ প্যানেল মেসেজ: {res.get('message', 'নম্বর খালি নেই')}", show_alert=True)
-    except requests.exceptions.Timeout:
-        bot.answer_callback_query(call.id, text="⚠️ প্যানেল সার্ভার রেসপন্স করেনি (Timeout)!", show_alert=True)
+            bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর পাওয়া যায়নি')}", show_alert=True)
+            
     except Exception as e:
-        bot.answer_callback_query(call.id, text="⚠️ কানেকশন ফেইল্ড! এপিআই কি সঠিক আছে তো?", show_alert=True)
+        bot.answer_callback_query(call.id, text="⚠️ কানেকশন সমস্যা! রেন্ডার রিস্টার্ট দিয়ে আবার ট্রাই করুন।", show_alert=True)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("fetch_"))
 def manual_fetch(call):
@@ -248,5 +253,5 @@ if __name__ == "__main__":
     keep_alive()
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 GET মেথড ফিক্সড ডাইনামিক বট সচল...")
+    print("🚀 ফর্ম-ডেটা ফিক্সড ডাইনামিক বট সচল...")
     bot.polling(none_stop=True)
