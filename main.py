@@ -2,7 +2,9 @@ import telebot
 import requests
 import os
 import time
+import random
 import json
+from datetime import datetime
 from telebot import types
 from flask import Flask
 from threading import Thread
@@ -27,7 +29,7 @@ def load_config():
             ],
             "OTP_DESTINATIONS": [
                 "-1003956226642",
-                "-1004309875319" # প্রাইভেট গ্রুপ আইডি এখানে যুক্ত করা হলো যেন অটো ফরোয়ার্ড হয়
+                "-1004309875319"
             ],
             "NOTICE": "⚠️ সার্ভিসটি ফুল স্পিডে সচল রয়েছে। কোনো সমস্যা হলে গ্রুপে জানান।",
             "SERVICES": {
@@ -421,22 +423,23 @@ def request_number(call):
             num = res["data"].get("full_number") or res["data"].get("no_plus_number")
             current_rid = res.get("rid", rid)
             
-            msg = (f"📱 Service: **{selected_app.upper()}** ({country})\n"
+            msg = (f"✅ **Your Number Assigned Successfully!**\n\n"
+                   f"📱 Service ➔ **{selected_app.upper()}**\n"
+                   f"🌍 Country ➔ **{country}**\n\n"
                    f"📞 Number: `{num}`\n\n"
-                   f"⏳ ওটিপি কোডের জন্য অপেক্ষা করা হচ্ছে...")
+                   f"⏳ Status: Waiting For OTP\n"
+                   f"⏰ Number Validity ➔ 10 minutes\n"
+                   f"💎 বটের ভিতরে ১০ সেকেন্ড ওয়েট করুন ওটিপি পেয়ে যাবেন না পেলে গ্রুপ চেক করুন। 🙂")
             
             markup = types.InlineKeyboardMarkup()
-            markup.row(
-                types.InlineKeyboardButton("📥 Fetch Code", callback_data=f"fetch_{current_rid}_{selected_app}_{num}"),
-                types.InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country}_{selected_app}")
-            )
+            markup.row(types.InlineKeyboardButton("🔄 Change Number (10s)", callback_data=f"c_{country}_{selected_app}"))
             
             if config["CHANNELS_TO_JOIN"]:
                 ch_info = config["CHANNELS_TO_JOIN"][0]
-                markup.row(types.InlineKeyboardButton(ch_info["name"], url=ch_info["link"]))
+                markup.row(types.InlineKeyboardButton(f"🔗 {ch_info['name']}", url=ch_info["link"]))
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
-            Thread(target=auto_fetch_otp, args=(call.message.chat.id, current_rid, selected_app, num, call.message.message_id)).start()
+            Thread(target=auto_fetch_otp, args=(call.message.chat.id, current_rid, selected_app, country, num, call.message.message_id)).start()
         else:
             bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ')}", show_alert=True)
             
@@ -448,17 +451,18 @@ def manual_fetch(call):
     data_parts = call.data.split("_")
     rid = data_parts[1]
     selected_app = data_parts[2]
-    num = data_parts[3]
+    country = data_parts[3]
+    num = data_parts[4]
     bot.answer_callback_query(call.id, text="🔍 ওটিপি চেক করা হচ্ছে...")
-    check_and_send_otp(call.message.chat.id, selected_app, num, call.message.message_id, manual=True)
+    check_and_send_otp(call.message.chat.id, selected_app, country, num, call.message.message_id, manual=True)
 
-def auto_fetch_otp(chat_id, rid, selected_app, num, msg_id=None):
+def auto_fetch_otp(chat_id, rid, selected_app, country, num, msg_id=None):
     for _ in range(4):
         time.sleep(15)
-        if check_and_send_otp(chat_id, selected_app, num, msg_id):
+        if check_and_send_otp(chat_id, selected_app, country, num, msg_id):
             return
 
-def check_and_send_otp(chat_id, selected_app, num, msg_id=None, manual=False):
+def check_and_send_otp(chat_id, selected_app, country, num, msg_id=None, manual=False):
     base_url = str(config['BASE_URL']).strip().rstrip('/')
     url = f"{base_url}/success-otp"
     headers = {"mauthapi": str(config["VOLTX_API_KEY"]).strip()}
@@ -477,28 +481,26 @@ def check_and_send_otp(chat_id, selected_app, num, msg_id=None, manual=False):
                     break
             
             if found_msg:
-                # স্ক্রিনশটের মতো কোড আলাদা করে দেখানোর জন্য ও শুধু কোড কপি করার ব্যবস্থা
-                alert = (f"🔥 **নতুন ওটিপি কোড এসেছে!** 🔥\n\n"
-                         f"📱 অ্যাপ: #{selected_app.upper()}\n"
-                         f"📞 নম্বর: `{num}`\n"
-                         f"✉️ ফুল মেসেজ:\n`{found_msg}`")
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                alert = (f"🇦🇺 **{country} {selected_app.upper()} RECEIVED!**\n\n"
+                         f"🕒 Time: `{current_time}`\n"
+                         f"📱 Service: {selected_app.upper()}\n"
+                         f"📞 Number: `{num}`\n"
+                         f"🌍 Country: {country}\n\n"
+                         f"💬 Message:\n`{found_msg}`")
                 
                 markup = types.InlineKeyboardMarkup()
+                markup.row(
+                    types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
+                    types.InlineKeyboardButton("📱 Number", callback_data="dummy_num")
+                )
                 
-                # দ্বিতীয় স্ক্রিনশটের স্টাইলে আলাদা কোড কপি করার বা ইনলাইন বাটন
-                markup.row(types.InlineKeyboardButton(f"🛡 📋 {found_msg}", callback_data="dummy_otp"))
-                
-                if config["CHANNELS_TO_JOIN"]:
-                    ch_info = config["CHANNELS_TO_JOIN"][0]
-                    markup.row(types.InlineKeyboardButton(ch_info["name"], url=ch_info["link"]))
-                
-                # ইউজারকে পাঠানো
                 try:
                     bot.send_message(chat_id, alert, reply_markup=markup, parse_mode="Markdown")
                 except:
                     pass
                 
-                # কনফিগার করা সব চ্যানেল বা প্রাইভেট গ্রুপে ফরোয়ার্ড করা (এক্সেপশন হ্যান্ডলিং সহ)
                 for dest_id in config.get("OTP_DESTINATIONS", []):
                     try:
                         bot.send_message(int(dest_id), alert, reply_markup=markup, parse_mode="Markdown")
@@ -507,7 +509,7 @@ def check_and_send_otp(chat_id, selected_app, num, msg_id=None, manual=False):
                 return True
             else:
                 if manual:
-                    bot.send_message(chat_id, "⚠️ ওটিপি এখনও প্যানেলে আসেনি। একটু পরে আবার 'Fetch Code' এ ক্লিক করুন।")
+                    bot.send_message(chat_id, "⚠️ ওটিপি এখনও প্যানেলে আসেনি। একটু পরে আবার চেষ্টা করুন।")
         else:
             if manual:
                 bot.send_message(chat_id, "⚠️ সার্ভার থেকে কোনো ডেটা পাওয়া যায়নি।")
@@ -516,9 +518,58 @@ def check_and_send_otp(chat_id, selected_app, num, msg_id=None, manual=False):
             bot.send_message(chat_id, "❌ ওটিপি চেক করতে গিয়ে সমস্যা হয়েছে।")
     return False
 
-@bot.callback_query_handler(func=lambda call: call.data == "dummy_otp")
-def handle_dummy_otp_click(call):
-    bot.answer_callback_query(call.id, text="✅ ওটিপি মেসেজটি খেয়াল করুন!", show_alert=False)
+# ==================== ব্যাকগ্রাউন্ড রেন্ডম ওটিপি জেনারেটর সিস্টেম ====================
+def background_random_otp_sender():
+    """বট সচল থাকলে ব্যাকগ্রাউন্ডে নিয়মিত ডামি/রেন্ডম ওটিপি গ্রুপে পাঠাতে থাকবে"""
+    while True:
+        try:
+            # প্রতি ৬০ থেকে ১২০ সেকেন্ড (১ থেকে ২ মিনিট) পর পর একটি রেন্ডম ওটিপি জেনারেট করবে
+            time.sleep(random.randint(60, 120))
+            
+            services_keys = list(config.get("SERVICES", {}).keys())
+            if not services_keys:
+                continue
+                
+            rand_app = random.choice(services_keys)
+            app_info = config["SERVICES"][rand_app]
+            
+            countries = list(app_info["rids"].keys())
+            if not countries:
+                continue
+                
+            rand_country = random.choice(countries)
+            
+            # রেন্ডম ফোন নম্বর এবং ওটিপি কোড তৈরি
+            rand_prefix = random.choice(["+5842", "+2246", "+2519", "+8801", "+1415"])
+            rand_num = f"{rand_prefix}{random.randint(10000000, 99999999)}"
+            otp_code = f"{random.randint(100,999)}-{random.randint(100,999)}"
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            fake_alert = (f"🇦🇺 **{rand_country} {rand_app.upper()} RECEIVED!**\n\n"
+                          f"🕒 Time: `{current_time}`\n"
+                          f"📱 Service: {rand_app.upper()}\n"
+                          f"📞 Number: `{rand_num[:6]}***{rand_num[-4:]}`\n"
+                          f"🌍 Country: {rand_country}\n\n"
+                          f"💬 Message:\n`# Your {rand_app.capitalize()} code is {otp_code}. Don't share this code with others.`")
+            
+            markup = types.InlineKeyboardMarkup()
+            markup.row(
+                types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
+                types.InlineKeyboardButton("📱 Number", callback_data="dummy_num")
+            )
+            
+            # সব ডেস্টিনেশন (চ্যানেল/গ্রুপ)-এ ডামি মেসেজ ফরোয়ার্ড করা
+            for dest_id in config.get("OTP_DESTINATIONS", []):
+                try:
+                    bot.send_message(int(dest_id), fake_alert, reply_markup=markup, parse_mode="Markdown")
+                except Exception as e:
+                    pass
+        except Exception:
+            pass
+
+@bot.callback_query_handler(func=lambda call: call.data == "dummy_num")
+def handle_dummy_num_click(call):
+    bot.answer_callback_query(call.id, text="📞 এটি একটিভ নম্বর!", show_alert=False)
 
 @bot.callback_query_handler(func=lambda call: call.data == "back_services")
 def back_to_serv(call): send_services_menu(call.message.chat.id, call.message.message_id)
@@ -538,7 +589,10 @@ def check(call):
 
 if __name__ == "__main__":
     keep_alive()
+    # ব্যাকগ্রাউন্ডে রেন্ডম ওটিপি পাঠানোর জন্য থ্রেড চালু করা হলো
+    Thread(target=background_random_otp_sender, daemon=True).start()
+    
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 ভোল্টেক্স ওটিপি বট সফলভাবে রান হচ্ছে...")
+    print("🚀 ভোল্টেক্স ওটিপি বট (অটো রেন্ডম ওটিপি ফ্লো সহ) সফলভাবে রান হচ্ছে...")
     bot.polling(none_stop=True)
