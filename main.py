@@ -19,7 +19,6 @@ def load_config():
             "VOLTX_API_KEY": "MLPNN2HKYXD", 
             "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api",
             "ADMIN_ID": 8262679678, 
-            # একাধিক চ্যানেল বা গ্রুপের লিস্ট (অ্যাডমিন প্যানেল থেকে পরিবর্তন করা যাবে)
             "CHANNELS_TO_JOIN": [
                 {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Main Channel"}
             ],
@@ -27,7 +26,8 @@ def load_config():
                 {"id": "-1004309875319", "link": "https://t.me/+DXdDIm7-rRU4YTQ1", "name": "👥 Support Group"}
             ],
             "OTP_DESTINATIONS": [
-                "-1003956226642" # ওটিপি কোড যে চ্যানেল বা গ্রুপে অটো ফরোয়ার্ড হবে
+                "-1003956226642",
+                "-1004309875319" # প্রাইভেট গ্রুপ আইডি এখানে যুক্ত করা হলো যেন অটো ফরোয়ার্ড হয়
             ],
             "NOTICE": "⚠️ সার্ভিসটি ফুল স্পিডে সচল রয়েছে। কোনো সমস্যা হলে গ্রুপে জানান।",
             "SERVICES": {
@@ -50,7 +50,6 @@ config = load_config()
 bot = telebot.TeleBot(config["BOT_TOKEN"])
 app = Flask('')
 
-# টেম্পোরারি স্টেট ডাটা রাখার জন্য ডিকশনারি (অ্যাডমিন উইজার্ডের জন্য)
 admin_temp_data = {}
 
 @app.route('/')
@@ -62,15 +61,13 @@ def keep_alive(): Thread(target=run).start()
 def is_subscribed_all(user_id):
     if user_id == int(config["ADMIN_ID"]): return True 
     
-    # সব বাধ্যবাধকতাপূর্ণ চ্যানেল চেক করা
     for ch in config.get("CHANNELS_TO_JOIN", []):
         try:
             status = bot.get_chat_member(int(ch["id"]), user_id).status
             if status in ['left', 'kicked']: return False
         except:
-            pass # চ্যাট চেক করতে সমস্যা হলে বাইপাস করবে বা ফলস ধরবে
+            pass 
             
-    # সব বাধ্যবাধকতাপূর্ণ গ্রুপ চেক করা
     for grp in config.get("GROUPS_TO_JOIN", []):
         try:
             status = bot.get_chat_member(int(grp["id"]), user_id).status
@@ -118,7 +115,6 @@ def start_bot(message):
         send_home_keyboard(message.chat.id)
     else:
         markup = types.InlineKeyboardMarkup()
-        # সব চ্যানেল ও গ্রুপের লিংক দিয়ে বাটন তৈরি করা
         for ch in config.get("CHANNELS_TO_JOIN", []):
             markup.row(types.InlineKeyboardButton(ch["name"], url=ch["link"]))
         for grp in config.get("GROUPS_TO_JOIN", []):
@@ -169,8 +165,6 @@ def send_available_countries(chat_id):
         msg += f"{s_info['name']} ➔ {rids_str}\n"
     bot.send_message(chat_id, msg, parse_mode="Markdown")
 
-# ==================== অ্যাডমিন ড্যাশবোর্ড ও উইজার্ড সিস্টেম ====================
-
 def show_admin_dashboard(chat_id):
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton("➕ Add Range ID", callback_data="adm_addrid"),
@@ -179,7 +173,7 @@ def show_admin_dashboard(chat_id):
     markup.row(types.InlineKeyboardButton("✍️ Set Notice", callback_data="adm_setnotice"),
                types.InlineKeyboardButton("🔑 Update API Key", callback_data="adm_setkey"))
     
-    text = (f"🛠 **অ্যাডমিন কন্ট্রোল প্যানেল (মাস্টার টিচার গাইড)**\n\n"
+    text = (f"🛠 **অ্যাডমিন কন্ট্রোল প্যানেল**\n\n"
             f"• API Key: `{config['VOLTX_API_KEY']}`\n"
             f"• মোট সচল অ্যাপ: {len(config['SERVICES'])}\n"
             f"• বাধ্যতামূলক চ্যানেল/গ্রুপ সংখ্যা: {len(config['CHANNELS_TO_JOIN']) + len(config['GROUPS_TO_JOIN'])}\n"
@@ -189,12 +183,10 @@ def show_admin_dashboard(chat_id):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_"))
 def handle_admin_callbacks(call):
     if call.message.chat.id != int(config["ADMIN_ID"]): return
-    
     data = call.data
     chat_id = call.message.chat.id
     
     if data == "adm_addrid":
-        # শিক্ষক স্টাইল গাইড: অ্যাপের নাম চয়েস বা লেখার জন্য ইনলাইন মেনু
         markup = types.InlineKeyboardMarkup()
         for s_id, s_info in config["SERVICES"].items():
             markup.add(types.InlineKeyboardButton(s_info["name"], callback_data=f"addapp_{s_id}"))
@@ -202,7 +194,6 @@ def handle_admin_callbacks(call):
         bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text="📌 **রেঞ্জ আইডি যুক্তকরণ:**\nপ্রথমে কোন অ্যাপের জন্য রেঞ্জ যোগ করবেন তা সিলেক্ট করুন:", reply_markup=markup, parse_mode="Markdown")
         
     elif data == "adm_delrid":
-        # ডিলিট করার জন্য অ্যাপ লিস্ট দেখানো
         markup = types.InlineKeyboardMarkup()
         for s_id, s_info in config["SERVICES"].items():
             markup.add(types.InlineKeyboardButton(f"❌ ডিলিট রেঞ্জ: {s_info['name']}", callback_data=f"delapp_{s_id}"))
@@ -230,7 +221,6 @@ def handle_admin_callbacks(call):
     elif data == "adm_back":
         show_admin_dashboard(chat_id)
 
-# রেঞ্জ যোগ করার উইজার্ড হ্যান্ডলার
 @bot.callback_query_handler(func=lambda call: call.data.startswith("addapp_"))
 def wizard_add_app(call):
     chat_id = call.message.chat.id
@@ -278,7 +268,6 @@ def wizard_save_rid(message):
         bot.send_message(chat_id, "❌ ফরম্যাট ভুল হয়েছে! সঠিক ফরম্যাটে (যেমন: `US 22501`) আবার চেষ্টা করুন।")
     show_admin_dashboard(chat_id)
 
-# রেঞ্জ ডিলিট করার হ্যান্ডলার
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delapp_"))
 def wizard_del_app(call):
     chat_id = call.message.chat.id
@@ -303,14 +292,12 @@ def wizard_execute_delete(call):
     
     if app_id in config["SERVICES"] and country in config["SERVICES"][app_id]["rids"]:
         del config["SERVICES"][app_id]["rids"][country]
-        # যদি কোনো দেশ বাকি না থাকে চাইলে অ্যাপ রাখতে পারেন বা রিমুভ করতে পারেন
         save_config(config)
         bot.answer_callback_query(call.id, text=f"✅ {country} এর রেঞ্জ সফলভাবে ডিলিট করা হয়েছে!", show_alert=True)
     else:
         bot.answer_callback_query(call.id, text="❌ ডিলিট করতে সমস্যা হয়েছে!", show_alert=True)
     show_admin_dashboard(chat_id)
 
-# চ্যানেল ও গ্রুপ অ্যাড/রিমুভ উইজার্ড
 @bot.callback_query_handler(func=lambda call: call.data == "ch_add")
 def wizard_add_channel(call):
     msg = bot.send_message(call.message.chat.id, "👉 নতুন চ্যানেল বা গ্রুপ যুক্ত করতে এভাবে লিখে পাঠান:\n\n`টাইপ আইডি লিংক নাম`\n\n*উদাহরণ (চ্যানেল):* `channel -100123456789 https://t.me/mychannel MyChannel`\n*উদাহরণ (গ্রুপ):* `group -100987654321 https://t.me/mygroup MyGroup`")
@@ -327,17 +314,18 @@ def process_save_channel_group(message):
         item = {"id": ch_id, "link": ch_link, "name": ch_name}
         if ch_type == "channel":
             config["CHANNELS_TO_JOIN"].append(item)
-            # ওটিপি ডেস্টিনেশনেও যুক্ত করে দেওয়া যাতে কোড ফরোয়ার্ড হয়
             if ch_id not in config["OTP_DESTINATIONS"]:
                 config["OTP_DESTINATIONS"].append(ch_id)
         elif ch_type == "group":
             config["GROUPS_TO_JOIN"].append(item)
+            if ch_id not in config["OTP_DESTINATIONS"]:
+                config["OTP_DESTINATIONS"].append(ch_id)
         else:
             bot.send_message(message.chat.id, "❌ টাইপ ভুল! 'channel' অথবা 'group' লিখুন।")
             return
             
         save_config(config)
-        bot.send_message(message.chat.id, "✅ সফলভাবে চ্যানেল/গ্রুপ যুক্ত করা হয়েছে!")
+        bot.send_message(message.chat.id, "✅ সফলভাবে চ্যানেল/গ্রুপ যুক্ত করা হয়েছে এবং ওটিপি ডেস্টিনেশনেও যুক্ত করা হয়েছে!")
     except Exception as e:
         bot.send_message(message.chat.id, "❌ ফরম্যাট সঠিক নয়! আবার চেষ্টা করুন।")
     show_admin_dashboard(message.chat.id)
@@ -368,7 +356,9 @@ def execute_remove_channel(call):
         else:
             bot.answer_callback_query(call.id, text="⚠️ কমপক্ষে একটি চ্যানেল থাকা বাধ্যতামূলক!", show_alert=True)
     elif target_type == "g":
-        config["GROUPS_TO_JOIN"].pop(idx)
+        removed = config["GROUPS_TO_JOIN"].pop(idx)
+        if removed["id"] in config["OTP_DESTINATIONS"]:
+            config["OTP_DESTINATIONS"].remove(removed["id"])
         save_config(config)
         bot.answer_callback_query(call.id, text="✅ গ্রুপ সফলভাবে রিমুভ হয়েছে!", show_alert=True)
         
@@ -387,8 +377,6 @@ def save_api_key(message):
     save_config(config)
     bot.send_message(message.chat.id, "✅ API Key সফলভাবে আপডেট হয়েছে।")
     show_admin_dashboard(message.chat.id)
-
-# ==================== নম্বর ও ওটিপি প্রসেসিং সিস্টেম ====================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("app_"))
 def show_countries(call):
@@ -443,7 +431,6 @@ def request_number(call):
                 types.InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country}_{selected_app}")
             )
             
-            # প্রথম চ্যানেলের লিংক বাটন হিসেবে যুক্ত করা
             if config["CHANNELS_TO_JOIN"]:
                 ch_info = config["CHANNELS_TO_JOIN"][0]
                 markup.row(types.InlineKeyboardButton(ch_info["name"], url=ch_info["link"]))
@@ -490,24 +477,33 @@ def check_and_send_otp(chat_id, selected_app, num, msg_id=None, manual=False):
                     break
             
             if found_msg:
+                # স্ক্রিনশটের মতো কোড আলাদা করে দেখানোর জন্য ও শুধু কোড কপি করার ব্যবস্থা
                 alert = (f"🔥 **নতুন ওটিপি কোড এসেছে!** 🔥\n\n"
                          f"📱 অ্যাপ: #{selected_app.upper()}\n"
                          f"📞 নম্বর: `{num}`\n"
-                         f"✉️ ওটিপি: **{found_msg}**")
+                         f"✉️ ফুল মেসেজ:\n`{found_msg}`")
                 
                 markup = types.InlineKeyboardMarkup()
+                
+                # দ্বিতীয় স্ক্রিনশটের স্টাইলে আলাদা কোড কপি করার বা ইনলাইন বাটন
+                markup.row(types.InlineKeyboardButton(f"🛡 📋 {found_msg}", callback_data="dummy_otp"))
+                
                 if config["CHANNELS_TO_JOIN"]:
                     ch_info = config["CHANNELS_TO_JOIN"][0]
                     markup.row(types.InlineKeyboardButton(ch_info["name"], url=ch_info["link"]))
                 
-                bot.send_message(chat_id, alert, reply_markup=markup, parse_mode="Markdown")
+                # ইউজারকে পাঠানো
+                try:
+                    bot.send_message(chat_id, alert, reply_markup=markup, parse_mode="Markdown")
+                except:
+                    pass
                 
-                # কনফিগার করা সব ওটিপি ডেস্টিনেশন চ্যানেলে কোড ফরোয়ার্ড করা
+                # কনফিগার করা সব চ্যানেল বা প্রাইভেট গ্রুপে ফরোয়ার্ড করা (এক্সেপশন হ্যান্ডলিং সহ)
                 for dest_id in config.get("OTP_DESTINATIONS", []):
                     try:
                         bot.send_message(int(dest_id), alert, reply_markup=markup, parse_mode="Markdown")
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"Failed to send to destination {dest_id}: {e}")
                 return True
             else:
                 if manual:
@@ -519,6 +515,10 @@ def check_and_send_otp(chat_id, selected_app, num, msg_id=None, manual=False):
         if manual:
             bot.send_message(chat_id, "❌ ওটিপি চেক করতে গিয়ে সমস্যা হয়েছে।")
     return False
+
+@bot.callback_query_handler(func=lambda call: call.data == "dummy_otp")
+def handle_dummy_otp_click(call):
+    bot.answer_callback_query(call.id, text="✅ ওটিপি মেসেজটি খেয়াল করুন!", show_alert=False)
 
 @bot.callback_query_handler(func=lambda call: call.data == "back_services")
 def back_to_serv(call): send_services_menu(call.message.chat.id, call.message.message_id)
@@ -540,5 +540,5 @@ if __name__ == "__main__":
     keep_alive()
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 মাস্টার টিচার গাইডসহ ভোল্টেক্স ওটিপি বট সফলভাবে রান হচ্ছে...")
+    print("🚀 ভোল্টেক্স ওটিপি বট সফলভাবে রান হচ্ছে...")
     bot.polling(none_stop=True)
