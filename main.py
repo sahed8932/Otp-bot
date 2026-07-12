@@ -15,9 +15,10 @@ def load_config():
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     else:
+        # ডিফল্ট কনফিগারেশন কাঠামো
         default_config = {
             "BOT_TOKEN": "8979736100:AAHti1Q9R3iVKX3M-6-VijfJFs5jWc620A0", 
-            "VOLTX_API_KEY": "MGYB4NMYU51", 
+            "VOLTX_API_KEY": "YOUR_VOLTXSMS_API_KEY", 
             "ADMIN_ID": 8262679678, 
             "CHANNEL_ID": "-1003956226642",
             "GROUP_ID": "-1004309875319",
@@ -108,9 +109,10 @@ def start_bot(message):
     else: 
         send_join_request(message.chat.id)
 
-# --- বাটন-ভিত্তিক এডমিন ড্যাশবোর্ড ---
+# --- বাটন-ভিত্তিক এডমিন ড্যাশবোর্ড (আপডেটেড) ---
 def show_admin_dashboard(chat_id):
     markup = types.InlineKeyboardMarkup()
+    markup.row(types.InlineKeyboardButton("🔑 Change Voltx API Key", callback_data="adm_setvoltx"))
     markup.row(types.InlineKeyboardButton("📢 Change Channel ID", callback_data="adm_setchannel"))
     markup.row(types.InlineKeyboardButton("💬 Change Group ID", callback_data="adm_setgroup"))
     markup.row(types.InlineKeyboardButton("🔗 Change Channel Link", callback_data="adm_setchlink"))
@@ -118,6 +120,7 @@ def show_admin_dashboard(chat_id):
     markup.row(types.InlineKeyboardButton("✉️ Broadcast Notice (সবাইকে নোটিশ)", callback_data="adm_notice"))
     
     current_settings = f"🛠 **এডমিন কন্ট্রোল ড্যাশবোর্ড**\n\n" \
+                       f"• Voltx API Key: `{config['VOLTX_API_KEY']}`\n" \
                        f"• চ্যানেল আইডি: `{config['CHANNEL_ID']}`\n" \
                        f"• গ্রুপ আইডি: `{config['GROUP_ID']}`\n" \
                        f"• চ্যানেল লিংক: {config['CHANNEL_LINK']}\n" \
@@ -134,7 +137,10 @@ def handle_admin_clicks(call):
     try: bot.delete_message(call.message.chat.id, call.message.message_id)
     except: pass
     
-    if action == "adm_setchannel":
+    if action == "adm_setvoltx":
+        msg = bot.send_message(call.message.chat.id, "👉 আপনার নতুন **VoltxSMS API Key** টি টাইপ করে পাঠান:")
+        bot.register_next_step_handler(msg, save_admin_setting, "VOLTX_API_KEY")
+    elif action == "adm_setchannel":
         msg = bot.send_message(call.message.chat.id, "👉 নতুন **চ্যানেল আইডি** টাইপ করে পাঠান (যেমন: -100xxxxxxxxx):")
         bot.register_next_step_handler(msg, save_admin_setting, "CHANNEL_ID")
     elif action == "adm_setgroup":
@@ -150,7 +156,6 @@ def handle_admin_clicks(call):
         msg = bot.send_message(call.message.chat.id, "✉️ সব ইউজারের কাছে পাঠানোর জন্য আপনার **নোটিশটি** টাইপ করে পাঠান:")
         bot.register_next_step_handler(msg, process_broadcast_notice)
 
-# এখানে global config-কে ফাংশনের একদম শুরুতে নিয়ে আসা হয়েছে
 def save_admin_setting(message, key_name):
     global config
     if message.chat.id != config["ADMIN_ID"]: 
@@ -160,7 +165,7 @@ def save_admin_setting(message, key_name):
     config[key_name] = new_value
     save_config(config)
     
-    bot.send_message(message.chat.id, f"✅ সফলভাবে আপডেট করা হয়েছে।")
+    bot.send_message(message.chat.id, f"✅ সফলভাবে `{key_name}` আপডেট করা হয়েছে।")
     show_admin_dashboard(message.chat.id)
 
 def process_broadcast_notice(message):
@@ -264,9 +269,10 @@ def show_number_interface(call):
             Thread(target=auto_fetch_voltx_otp, args=(call.message.chat.id, order_id, selected_app, num1, False)).start()
             
         else:
-            bot.answer_callback_query(call.id, text="❌ দুঃখিত, এই মুহূর্তে VoltxSMS সার্ভারে কোনো নম্বর খালি নেই!", show_alert=True)
-    except:
-        bot.answer_callback_query(call.id, text="⚠️ VoltxSMS API সার্ভার রেসপন্স করছে না। পরে চেষ্টা করুন।", show_alert=True)
+            bot.answer_callback_query(call.id, text="❌ VoltxSMS রেসপন্স: নম্বর উপলব্ধ নেই বা ব্যালেন্স শেষ!", show_alert=True)
+    except Exception as e:
+        print(f"❌ VoltxSMS API Error Connection: {e}")
+        bot.answer_callback_query(call.id, text=f"⚠️ এপিআই এরর! আপনার ড্যাশবোর্ড থেকে API Key চেক করুন।", show_alert=True)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("fetch_"))
 def manual_fetch_trigger(call):
@@ -308,6 +314,11 @@ def auto_fetch_voltx_otp(chat_id, order_id, selected_app, phone, manual=False):
 
 if __name__ == "__main__":
     keep_alive()
-    print("🚀 VoltxSMS ওটিপি বট সফলভাবে রিলিজ হয়েছে...")
+    try:
+        bot.delete_webhook(drop_pending_updates=True)
+        time.sleep(1)
+    except: pass
+        
+    print("🚀 বাটন-ভিত্তিক ড্যাশবোর্ডসহ ওটিপি বট সম্পূর্ণ রেডি...")
     try: bot.polling(none_stop=True, interval=0, timeout=20)
     except Exception as e: print(f"বট রানিংয়ে সমস্যা: {e}")
