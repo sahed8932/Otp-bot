@@ -20,7 +20,10 @@ def load_config():
             "BOT_TOKEN": "8979736100:AAG_8ILyTgjuWxpSG1v2kgdRWv4nCPeycws", 
             "VOLTX_API_KEY": "MLPNN2HKYXD", 
             "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api",
-            "ADMIN_ID": 8262679678, 
+            "ADMIN_ID": 8262679678,
+            "BOT_NAME": "SM OTP", 
+            "BOT_USERNAME": "YourBotUsername", # এখানে আপনার বটের ইউজারনেম দিবেন (@ ছাড়া)
+            "DEV_USERNAME": "Saku_143",        # ডেভেলপার বা ওনারের ইউজারনেম (@ ছাড়া)
             "CHANNELS_TO_JOIN": [
                 {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Main Channel"}
             ],
@@ -87,6 +90,7 @@ def send_home_keyboard(chat_id, text=None):
     markup.row(types.KeyboardButton("📞 Get Number"), types.KeyboardButton("📊 Active Traffic"))
     markup.row(types.KeyboardButton("💰 Balance"), types.KeyboardButton("📉 Withdraw"))
     markup.row(types.KeyboardButton("🌍 Available Countries"), types.KeyboardButton("🔐 2FA GENERATE"))
+    markup.row(types.KeyboardButton("🤖 Create Your own bot"))
     if chat_id == int(config["ADMIN_ID"]):
         markup.row(types.KeyboardButton("🛠 Admin Dashboard"))
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
@@ -144,6 +148,9 @@ def handle_text(message):
         send_available_countries(message.chat.id)
     elif text == "🔐 2FA GENERATE":
         bot.send_message(message.chat.id, "🔐 2FA কোড জেনারেট করার জন্য আপনার সিক্রেট কোডটি দিন।", parse_mode="Markdown")
+    elif text == "🤖 Create Your own bot":
+        dev_user = config.get("DEV_USERNAME", "Saku_143")
+        bot.send_message(message.chat.id, f"🤖 নিজস্ব ওটিপি বট তৈরি করতে চাইলে নিচের লিংকে যোগাযোগ করুন:\n\n👉 Telegram: @{dev_user}", parse_mode="Markdown")
     elif text == "🛠 Admin Dashboard" and message.chat.id == int(config["ADMIN_ID"]):
         show_admin_dashboard(message.chat.id)
 
@@ -173,12 +180,21 @@ def show_admin_dashboard(chat_id):
                types.InlineKeyboardButton("🗑 Delete Range ID", callback_data="adm_delrid"))
     markup.row(types.InlineKeyboardButton("📢 Manage Channels/Groups", callback_data="adm_channels"))
     markup.row(types.InlineKeyboardButton("✍️ Set Notice", callback_data="adm_setnotice"),
-               types.InlineKeyboardButton("🔑 Update API Key", callback_data="adm_setkey"))
+               types.InlineKeyboardButton("🤖 Set Bot Name", callback_data="adm_setname"))
+    markup.row(types.InlineKeyboardButton("🔗 Set Bot Username", callback_data="adm_setbotuser"),
+               types.InlineKeyboardButton("👨‍💻 Set Dev Username", callback_data="adm_setdevuser"))
+    markup.row(types.InlineKeyboardButton("🔑 Update API Key", callback_data="adm_setkey"))
+    
+    bot_title = config.get("BOT_NAME", "SM OTP")
+    bot_user = config.get("BOT_USERNAME", "YourBotUsername")
+    dev_user = config.get("DEV_USERNAME", "Saku_143")
     
     text = (f"🛠 **অ্যাডমিন কন্ট্রোল প্যানেল**\n\n"
+            f"• Bot Name: `{bot_title}`\n"
+            f"• Bot Username: `@{bot_user}`\n"
+            f"• Dev Username: `@{dev_user}`\n"
             f"• API Key: `{config['VOLTX_API_KEY']}`\n"
             f"• মোট সচল অ্যাপ: {len(config['SERVICES'])}\n"
-            f"• বাধ্যতামূলক চ্যানেল/গ্রুপ সংখ্যা: {len(config['CHANNELS_TO_JOIN']) + len(config['GROUPS_TO_JOIN'])}\n"
             f"• বর্তমান নোটিশ: {config.get('NOTICE', 'নেই')}")
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
@@ -217,6 +233,15 @@ def handle_admin_callbacks(call):
     elif data == "adm_setnotice":
         msg = bot.send_message(chat_id, "👉 ইউজারদের জন্য নতুন নোটিশটি লিখে পাঠান:")
         bot.register_next_step_handler(msg, save_notice)
+    elif data == "adm_setname":
+        msg = bot.send_message(chat_id, "👉 নতুন বটের নাম (যেমন: `SM OTP`) লিখে পাঠান:")
+        bot.register_next_step_handler(msg, save_bot_name)
+    elif data == "adm_setbotuser":
+        msg = bot.send_message(chat_id, "👉 বটের ইউজারনেম লিখুন (@ ছাড়া, যেমন: `MyOtpBot`):")
+        bot.register_next_step_handler(msg, save_bot_username)
+    elif data == "adm_setdevuser":
+        msg = bot.send_message(chat_id, "👉 ডেভেলপার বা ওনারের ইউজারনেম লিখুন (@ ছাড়া, যেমন: `Saku_143`):")
+        bot.register_next_step_handler(msg, save_dev_username)
     elif data == "adm_setkey":
         msg = bot.send_message(chat_id, "👉 আপনার নতুন Voltx SMS API Key টি পাঠান:")
         bot.register_next_step_handler(msg, save_api_key)
@@ -373,6 +398,27 @@ def save_notice(message):
     bot.send_message(message.chat.id, "✅ নোটিশ সফলভাবে আপডেট হয়েছে।")
     show_admin_dashboard(message.chat.id)
 
+def save_bot_name(message):
+    global config
+    config["BOT_NAME"] = message.text.strip()
+    save_config(config)
+    bot.send_message(message.chat.id, "✅ বটের নাম সফলভাবে আপডেট হয়েছে।")
+    show_admin_dashboard(message.chat.id)
+
+def save_bot_username(message):
+    global config
+    config["BOT_USERNAME"] = message.text.strip().replace("@", "")
+    save_config(config)
+    bot.send_message(message.chat.id, "✅ বটের ইউজারনেম সফলভাবে আপডেট হয়েছে।")
+    show_admin_dashboard(message.chat.id)
+
+def save_dev_username(message):
+    global config
+    config["DEV_USERNAME"] = message.text.strip().replace("@", "")
+    save_config(config)
+    bot.send_message(message.chat.id, "✅ ডেভেলপার ইউজারনেম সফলভাবে আপডেট হয়েছে।")
+    show_admin_dashboard(message.chat.id)
+
 def save_api_key(message):
     global config
     config["VOLTX_API_KEY"] = message.text.strip()
@@ -482,8 +528,11 @@ def check_and_send_otp(chat_id, selected_app, country, num, msg_id=None, manual=
             
             if found_msg:
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                bot_title = config.get("BOT_NAME", "SM OTP")
+                bot_user = config.get("BOT_USERNAME", "YourBotUsername")
                 
-                alert = (f"🇦🇺 **{country} {selected_app.upper()} RECEIVED!**\n\n"
+                alert = (f"🤖 **{bot_title}**\n"
+                         f"🇲🇬 **{country} {selected_app.upper()} RECEIVED!**\n\n"
                          f"🕒 Time: `{current_time}`\n"
                          f"📱 Service: {selected_app.upper()}\n"
                          f"📞 Number: `{num}`\n"
@@ -491,9 +540,10 @@ def check_and_send_otp(chat_id, selected_app, country, num, msg_id=None, manual=
                          f"💬 Message:\n`{found_msg}`")
                 
                 markup = types.InlineKeyboardMarkup()
+                # 'Number' বাটনে ক্লিক করলে সরাসরি আপনার বটে চলে যাবে
                 markup.row(
                     types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
-                    types.InlineKeyboardButton("📱 Number", callback_data="dummy_num")
+                    types.InlineKeyboardButton("📱 Number", url=f"https://t.me/{bot_user}")
                 )
                 
                 try:
@@ -518,12 +568,24 @@ def check_and_send_otp(chat_id, selected_app, country, num, msg_id=None, manual=
             bot.send_message(chat_id, "❌ ওটিপি চেক করতে গিয়ে সমস্যা হয়েছে।")
     return False
 
-# ==================== ব্যাকগ্রাউন্ড রেন্ডম ওটিপি জেনারেটর সিস্টেম ====================
+# ==================== বহুদেশীয় রেন্ডম ওটিপি জেনারেটর সিস্টেম ====================
 def background_random_otp_sender():
-    """বট সচল থাকলে ব্যাকগ্রাউন্ডে নিয়মিত ডামি/রেন্ডম ওটিপি গ্রুপে পাঠাতে থাকবে"""
+    countries_pool = [
+        {"name": "Madagascar", "flag": "🇲🇬", "code": "+26134"},
+        {"name": "Ivory Coast", "flag": "🇨🇮", "code": "+22507"},
+        {"name": "Tajikistan", "flag": "🇹🇯", "code": "+99277"},
+        {"name": "Ethiopia", "flag": "🇪🇹", "code": "+25191"},
+        {"name": "Guinea", "flag": "🇬🇳", "code": "+22467"},
+        {"name": "Sierra Leone", "flag": "🇸🇱", "code": "+23274"},
+        {"name": "Senegal", "flag": "🇸🇳", "code": "+22170"},
+        {"name": "Benin", "flag": "🇧🇯", "code": "+22901"},
+        {"name": "Central African Republic", "flag": "🇨🇫", "code": "+23674"},
+        {"name": "Montenegro", "flag": "🇲🇪", "code": "+38267"},
+        {"name": "Tunisia", "flag": "🇹🇳", "code": "+21644"}
+    ]
+    
     while True:
         try:
-            # প্রতি ৬০ থেকে ১২০ সেকেন্ড (১ থেকে ২ মিনিট) পর পর একটি রেন্ডম ওটিপি জেনারেট করবে
             time.sleep(random.randint(60, 120))
             
             services_keys = list(config.get("SERVICES", {}).keys())
@@ -531,34 +593,32 @@ def background_random_otp_sender():
                 continue
                 
             rand_app = random.choice(services_keys)
-            app_info = config["SERVICES"][rand_app]
+            rand_country_info = random.choice(countries_pool)
             
-            countries = list(app_info["rids"].keys())
-            if not countries:
-                continue
-                
-            rand_country = random.choice(countries)
+            c_name = rand_country_info["name"]
+            c_flag = rand_country_info["flag"]
+            c_code = rand_country_info["code"]
             
-            # রেন্ডম ফোন নম্বর এবং ওটিপি কোড তৈরি
-            rand_prefix = random.choice(["+5842", "+2246", "+2519", "+8801", "+1415"])
-            rand_num = f"{rand_prefix}{random.randint(10000000, 99999999)}"
-            otp_code = f"{random.randint(100,999)}-{random.randint(100,999)}"
+            rand_num = f"{c_code}{random.randint(100000, 999999)}"
+            otp_code = f"{random.randint(100,999)}-{random.randint(100,999)}" if random.choice([True, False]) else str(random.randint(100000, 999999))
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            bot_title = config.get("BOT_NAME", "SM OTP")
+            bot_user = config.get("BOT_USERNAME", "YourBotUsername")
             
-            fake_alert = (f"🇦🇺 **{rand_country} {rand_app.upper()} RECEIVED!**\n\n"
+            fake_alert = (f"🤖 **{bot_title}**\n"
+                          f"{c_flag} **{c_name} {rand_app.upper()} RECEIVED!**\n\n"
                           f"🕒 Time: `{current_time}`\n"
                           f"📱 Service: {rand_app.upper()}\n"
                           f"📞 Number: `{rand_num[:6]}***{rand_num[-4:]}`\n"
-                          f"🌍 Country: {rand_country}\n\n"
-                          f"💬 Message:\n`# Your {rand_app.capitalize()} code is {otp_code}. Don't share this code with others.`")
+                          f"🌍 Country: {c_name}\n\n"
+                          f"💬 Message:\n`# Your {rand_app.capitalize()} verification code is {otp_code}. Don't share this code with anyone.`")
             
             markup = types.InlineKeyboardMarkup()
             markup.row(
                 types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
-                types.InlineKeyboardButton("📱 Number", callback_data="dummy_num")
+                types.InlineKeyboardButton("📱 Number", url=f"https://t.me/{bot_user}")
             )
             
-            # সব ডেস্টিনেশন (চ্যানেল/গ্রুপ)-এ ডামি মেসেজ ফরোয়ার্ড করা
             for dest_id in config.get("OTP_DESTINATIONS", []):
                 try:
                     bot.send_message(int(dest_id), fake_alert, reply_markup=markup, parse_mode="Markdown")
@@ -566,10 +626,6 @@ def background_random_otp_sender():
                     pass
         except Exception:
             pass
-
-@bot.callback_query_handler(func=lambda call: call.data == "dummy_num")
-def handle_dummy_num_click(call):
-    bot.answer_callback_query(call.id, text="📞 এটি একটিভ নম্বর!", show_alert=False)
 
 @bot.callback_query_handler(func=lambda call: call.data == "back_services")
 def back_to_serv(call): send_services_menu(call.message.chat.id, call.message.message_id)
@@ -589,10 +645,9 @@ def check(call):
 
 if __name__ == "__main__":
     keep_alive()
-    # ব্যাকগ্রাউন্ডে রেন্ডম ওটিপি পাঠানোর জন্য থ্রেড চালু করা হলো
     Thread(target=background_random_otp_sender, daemon=True).start()
     
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 ভোল্টেক্স ওটিপি বট (অটো রেন্ডম ওটিপি ফ্লো সহ) সফলভাবে রান হচ্ছে...")
+    print("🚀 ভোল্টেক্স ওটিপি বট সফলভাবে রান হচ্ছে...")
     bot.polling(none_stop=True)
