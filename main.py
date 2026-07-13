@@ -23,7 +23,9 @@ def load_config():
             "ADMIN_ID": 8262679678,
             "BOT_NAME": "SM OTP", 
             "BOT_USERNAME": "YourBotUsername", 
-            "DEV_USERNAME": "Saku_143",        
+            "DEV_USERNAME": "Saku_143",
+            "BALANCE_TEXT": "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।",
+            "WITHDRAW_TEXT": "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।",
             "CHANNELS_TO_JOIN": [
                 {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Main Channel"}
             ],
@@ -141,16 +143,18 @@ def handle_text(message):
     elif text == "📊 Active Traffic":
         fetch_live_traffic(message.chat.id)
     elif text == "💰 Balance":
-        bot.send_message(message.chat.id, "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।", parse_mode="Markdown")
+        bal_text = config.get("BALANCE_TEXT", "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।")
+        bot.send_message(message.chat.id, bal_text, parse_mode="Markdown")
     elif text == "📉 Withdraw":
-        bot.send_message(message.chat.id, "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।", parse_mode="Markdown")
+        wd_text = config.get("WITHDRAW_TEXT", "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।")
+        bot.send_message(message.chat.id, wd_text, parse_mode="Markdown")
     elif text == "🌍 Available Countries":
         send_available_countries(message.chat.id)
     elif text == "🔐 2FA GENERATE":
         bot.send_message(message.chat.id, "🔐 2FA কোড জেনারেট করার জন্য আপনার সিক্রেট কোডটি দিন।", parse_mode="Markdown")
     elif text == "🤖 Create Your own bot":
         dev_user = config.get("DEV_USERNAME", "Saku_143")
-        bot.send_message(message.chat.id, f"🤖 নিজস্ব ওটিপি বট তৈরি করতে চাইলে নিচের লিংকে যোগাযোগ করুন:\n\n👉 Telegram: @{dev_user}", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"🤖 আপনার যদি নিজস্ব ওটিপি বট বানাতে চান তাহলে আমার সাথে যোগাযোগ করুন @{dev_user}", parse_mode="Markdown")
     elif text == "🛠 Admin Dashboard" and message.chat.id == int(config["ADMIN_ID"]):
         show_admin_dashboard(message.chat.id)
 
@@ -181,6 +185,8 @@ def show_admin_dashboard(chat_id):
     markup.row(types.InlineKeyboardButton("📢 Manage Channels/Groups", callback_data="adm_channels"))
     markup.row(types.InlineKeyboardButton("✍️ Set Notice", callback_data="adm_setnotice"),
                types.InlineKeyboardButton("🤖 Set Bot Name", callback_data="adm_setname"))
+    markup.row(types.InlineKeyboardButton("💰 Edit Balance Text", callback_data="adm_setbal"),
+               types.InlineKeyboardButton("📉 Edit Withdraw Text", callback_data="adm_setwd"))
     markup.row(types.InlineKeyboardButton("🔗 Set Bot Username", callback_data="adm_setbotuser"),
                types.InlineKeyboardButton("👨‍💻 Set Dev Username", callback_data="adm_setdevuser"))
     markup.row(types.InlineKeyboardButton("🔑 Update API Key", callback_data="adm_setkey"))
@@ -236,6 +242,12 @@ def handle_admin_callbacks(call):
     elif data == "adm_setname":
         msg = bot.send_message(chat_id, "👉 নতুন বটের নাম (যেমন: `SM OTP`) লিখে পাঠান:")
         bot.register_next_step_handler(msg, save_bot_name)
+    elif data == "adm_setbal":
+        msg = bot.send_message(chat_id, "👉 নতুন Balance মেসেজটি লিখে পাঠান:")
+        bot.register_next_step_handler(msg, save_balance_text)
+    elif data == "adm_setwd":
+        msg = bot.send_message(chat_id, "👉 নতুন Withdraw মেসেজটি লিখে পাঠান:")
+        bot.register_next_step_handler(msg, save_withdraw_text)
     elif data == "adm_setbotuser":
         msg = bot.send_message(chat_id, "👉 বটের ইউজারনেম লিখুন (@ ছাড়া, যেমন: `MyOtpBot`):")
         bot.register_next_step_handler(msg, save_bot_username)
@@ -405,6 +417,20 @@ def save_bot_name(message):
     bot.send_message(message.chat.id, "✅ বটের নাম সফলভাবে আপডেট হয়েছে।")
     show_admin_dashboard(message.chat.id)
 
+def save_balance_text(message):
+    global config
+    config["BALANCE_TEXT"] = message.text.strip()
+    save_config(config)
+    bot.send_message(message.chat.id, "✅ Balance মেসেজ সফলভাবে আপডেট হয়েছে।")
+    show_admin_dashboard(message.chat.id)
+
+def save_withdraw_text(message):
+    global config
+    config["WITHDRAW_TEXT"] = message.text.strip()
+    save_config(config)
+    bot.send_message(message.chat.id, "✅ Withdraw মেসেজ সফলভাবে আপডেট হয়েছে।")
+    show_admin_dashboard(message.chat.id)
+
 def save_bot_username(message):
     global config
     config["BOT_USERNAME"] = message.text.strip().replace("@", "")
@@ -483,13 +509,14 @@ def request_number(call):
                 types.InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country}_{selected_app}")
             )
             
+            # বটের চ্যাটের নিচে থাকবে 'View OTP Group' বা চ্যানেল লিংক বাটন
             if config["CHANNELS_TO_JOIN"]:
                 ch_info = config["CHANNELS_TO_JOIN"][0]
-                markup.row(types.InlineKeyboardButton(f"🔗 {ch_info['name']}", url=ch_info["link"]))
+                markup.row(types.InlineKeyboardButton(f"🔗 View OTP Group", url=ch_info["link"]))
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
         else:
-            bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ স্টক')}", show_alert=True)
+            bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ')}", show_alert=True)
             
     except Exception as e:
         bot.answer_callback_query(call.id, text="⚠️ কানেকশন সমস্যা! আবার ট্রাই করুন।", show_alert=True)
@@ -527,32 +554,50 @@ def check_and_send_otp(chat_id, selected_app, country, num, msg_id=None, manual=
                 bot_title = config.get("BOT_NAME", "SM OTP")
                 bot_user = config.get("BOT_USERNAME", "YourBotUsername")
                 
-                # শুধু কোডটি আলাদা করার লজিক (মেসেজের ভেতর কোড থাকলে আলাদা কোড ব্লকে দেখাবে)
-                code_only = found_msg
+                # শুধু কোড আলাদা করে এক্সট্রাক্ট করা (ডিজিট বা পিন কোড বের করার স্মার্ট পদ্ধতি)
+                import re
+                code_match = re.search(r'\b\d{4,8}\b', found_msg)
+                isolated_code = code_match.group(0) if code_match else found_msg[:10]
                 
-                alert = (f"🤖 **{bot_title}**\n"
-                         f"🇲🇬 **{country} {selected_app.upper()} RECEIVED!**\n\n"
-                         f"🕒 Time: `{current_time}`\n"
-                         f"📱 Service: {selected_app.upper()}\n"
-                         f"📞 Number: `{num}`\n"
-                         f"🌍 Country: {country}\n"
-                         f"🔑 OTP Code: `{code_only}`\n\n"
-                         f"💬 Message:\n{found_msg}")
+                # ১. ইউজারের প্রাইভেট চ্যাটের জন্য মেসেজ (যেখানে Fetch Code দিয়ে আনা হয়েছে)
+                user_alert = (f"🤖 **{bot_title}**\n"
+                              f"🇲🇬 **{country} {selected_app.upper()} RECEIVED!**\n\n"
+                              f"🕒 Time: `{current_time}`\n"
+                              f"📱 Service: {selected_app.upper()}\n"
+                              f"📞 Number: `{num}`\n"
+                              f"🌍 Country: {country}\n"
+                              f"🔑 OTP: `{isolated_code}`\n\n"
+                              f"💬 Message:\n{found_msg}")
                 
-                markup = types.InlineKeyboardMarkup()
-                markup.row(
+                user_markup = types.InlineKeyboardMarkup()
+                if config["CHANNELS_TO_JOIN"]:
+                    ch_info = config["CHANNELS_TO_JOIN"][0]
+                    user_markup.row(types.InlineKeyboardButton(f"🔗 View OTP Group", url=ch_info["link"]))
+                
+                try:
+                    bot.send_message(chat_id, user_alert, reply_markup=user_markup, parse_mode="Markdown")
+                except:
+                    pass
+                
+                # ২. গ্রুপ বা চ্যানেলের জন্য মেসেজ (যেখানে লাল দাগ দেওয়া জায়গায় 'Number' বাটন থাকবে)
+                group_alert = (f"🤖 **{bot_title}**\n"
+                               f"🇲🇬 **{country} {selected_app.upper()} RECEIVED!**\n\n"
+                               f"🕒 Time: `{current_time}`\n"
+                               f"📱 Service: {selected_app.upper()}\n"
+                               f"📞 Number: `{num}`\n"
+                               f"🌍 Country: {country}\n"
+                               f"🔑 OTP: `{isolated_code}`\n\n"
+                               f"💬 Message:\n{found_msg}")
+                
+                group_markup = types.InlineKeyboardMarkup()
+                group_markup.row(
                     types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
                     types.InlineKeyboardButton("📱 Number", url=f"https://t.me/{bot_user}")
                 )
                 
-                try:
-                    bot.send_message(chat_id, alert, reply_markup=markup, parse_mode="Markdown")
-                except:
-                    pass
-                
                 for dest_id in config.get("OTP_DESTINATIONS", []):
                     try:
-                        bot.send_message(int(dest_id), alert, reply_markup=markup, parse_mode="Markdown")
+                        bot.send_message(int(dest_id), group_alert, reply_markup=group_markup, parse_mode="Markdown")
                     except Exception as e:
                         print(f"Failed to send to destination {dest_id}: {e}")
                 return True
@@ -610,7 +655,7 @@ def background_random_otp_sender():
                           f"📱 Service: {rand_app.upper()}\n"
                           f"📞 Number: `{rand_num[:6]}***{rand_num[-4:]}`\n"
                           f"🌍 Country: {c_name}\n"
-                          f"🔑 OTP Code: `{otp_code}`\n\n"
+                          f"🔑 OTP: `{otp_code}`\n\n"
                           f"💬 Message:\n# Your {rand_app.capitalize()} verification code is {otp_code}. Don't share this code with anyone.")
             
             markup = types.InlineKeyboardMarkup()
