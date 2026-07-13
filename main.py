@@ -90,12 +90,12 @@ def is_subscribed_all(user_id):
     for ch in config.get("CHANNELS_TO_JOIN", []):
         try:
             status = bot.get_chat_member(int(ch["id"]), user_id).status
-            if status in ['left', 'kicked']: return False
+            if status in ['left', 'kicked', 'restricted']: return False
         except: pass 
     for grp in config.get("GROUPS_TO_JOIN", []):
         try:
             status = bot.get_chat_member(int(grp["id"]), user_id).status
-            if status in ['left', 'kicked']: return False
+            if status in ['left', 'kicked', 'restricted']: return False
         except: pass
     return True
 
@@ -154,7 +154,13 @@ def start_bot(message):
 def handle_text(message):
     track_user(message.chat.id)
     if not is_subscribed_all(message.chat.id):
-        bot.send_message(message.chat.id, "❌ আপনি এখনো সব চ্যানেল বা গ্রুপে জয়েন করেননি! দয়া করে জয়েন করে আবার /start দিন।")
+        markup = types.InlineKeyboardMarkup()
+        for ch in config.get("CHANNELS_TO_JOIN", []):
+            markup.row(types.InlineKeyboardButton(ch["name"], url=ch["link"]))
+        for grp in config.get("GROUPS_TO_JOIN", []):
+            markup.row(types.InlineKeyboardButton(grp["name"], url=grp["link"]))
+        markup.row(types.InlineKeyboardButton("✅ Joined (Check)", callback_data="check_membership"))
+        bot.send_message(message.chat.id, "❌ আপনি এখনো সমস্ত চ্যানেল বা গ্রুপে জয়েন করেননি!\n\nদয়া করে উপরের সমস্ত চ্যানেল ও গ্রুপগুলোতে জয়েন করুন, এরপর নিচের **Joined** বাটনে ক্লিক করুন।", reply_markup=markup)
         return
     
     text = message.text
@@ -187,8 +193,8 @@ def fetch_live_traffic(chat_id):
             bot.send_message(chat_id, "📊 **Active Traffic Status:** 100% Online & Connected!", parse_mode="Markdown")
         else:
             bot.send_message(chat_id, "📊 Traffic Active (API Connected)")
-    except Exception as e:
-        bot.send_message(chat_id, f"📊 Active Traffic: সার্ভার রানিং আছে!")
+    except:
+        bot.send_message(chat_id, "📊 Active Traffic: সার্ভার রানিং আছে!")
 
 def send_available_countries(chat_id):
     msg = "🌍 **বর্তমান উপলব্ধ দেশসমূহ ও রেঞ্জ আইডি:**\n\n"
@@ -309,7 +315,7 @@ def wizard_add_app(call):
         bot.register_next_step_handler(msg, wizard_get_custom_app_name)
     else:
         admin_temp_data[chat_id] = {"app": app_target}
-        msg = bot.send_message(chat_id, f"🌍 আপনি **{app_target.upper()}** সিলেক্ট করেছেন।\n\nএখন দেশের কোড এবং রেঞ্জ আইডি (শেষে XXX সহ) এভাবে লিখে পাঠান:\n*উদাহরণ:* `US 22501XXX`")
+        msg = bot.send_message(chat_id, f"🌍 আপনি **{app_target.upper()}** সিলেক্ট করেছেন።\n\nএখন দেশের কোড এবং রেঞ্জ আইডি (শেষে XXX সহ) এভাবে লিখে পাঠান:\n*উদাহরণ:* `US 22501XXX`")
         bot.register_next_step_handler(msg, wizard_save_rid)
 
 def wizard_get_custom_app_name(message):
@@ -513,6 +519,8 @@ def request_number(call):
                 types.InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country}_{selected_app}")
             )
             markup.row(types.InlineKeyboardButton("📋 Copy Number", callback_data=f"copynum_{num}"))
+            if config["CHANNELS_TO_JOIN"]:
+                markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=config["CHANNELS_TO_JOIN"][0]["link"]))
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
         else:
@@ -591,6 +599,8 @@ def check_and_send_otp(chat_id, selected_app, country, num, manual=False):
                     types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{isolated_code}"),
                     types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{num}")
                 )
+                if config["CHANNELS_TO_JOIN"]:
+                    group_markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=config["CHANNELS_TO_JOIN"][0]["link"]))
                 group_markup.row(
                     types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
                     types.InlineKeyboardButton("📱 Bot", url=f"https://t.me/{bot_user}")
@@ -612,7 +622,6 @@ def check_and_send_otp(chat_id, selected_app, country, num, manual=False):
             bot.send_message(chat_id, "❌ ওটিপি চেক করতে গিয়ে সমস্যা হয়েছে।")
     return False
 
-# ব্যাকগ্রাউন্ড লাইভ এসএমএস মনিটর ও ফলব্যাক রেন্ডম সিস্টেম
 def background_live_sms_monitor():
     countries_pool = [
         {"name": "Madagascar", "flag": "🇲🇬", "code": "+26134"},
@@ -667,6 +676,8 @@ def background_live_sms_monitor():
                         types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{isolated_code}"),
                         types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{num}")
                     )
+                    if config["CHANNELS_TO_JOIN"]:
+                        markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=config["CHANNELS_TO_JOIN"][0]["link"]))
                     markup.row(
                         types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
                         types.InlineKeyboardButton("📱 Bot", url=f"https://t.me/{bot_user}")
@@ -677,7 +688,6 @@ def background_live_sms_monitor():
                             bot.send_message(int(dest_id), live_alert, reply_markup=markup, parse_mode="Markdown")
                         except: pass
             
-            # প্যানেলে লাইভ এসএমএস না থাকলে ফলব্যাক রেন্ডম জেনারেটর কাজ করবে
             if not res or not res.get("meta", {}).get("status") == "ok":
                 services_keys = list(config.get("SERVICES", {}).keys())
                 if services_keys and random.choice([True, False]):
@@ -703,6 +713,8 @@ def background_live_sms_monitor():
                         types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{otp_code}"),
                         types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{rand_num}")
                     )
+                    if config["CHANNELS_TO_JOIN"]:
+                        markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=config["CHANNELS_TO_JOIN"][0]["link"]))
                     markup.row(
                         types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
                         types.InlineKeyboardButton("📱 Bot", url=f"https://t.me/{bot_user}")
@@ -726,7 +738,10 @@ def back(call):
 @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
 def check(call):
     if is_subscribed_all(call.from_user.id): 
-        bot.delete_message(call.message.chat.id, call.message.message_id)
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
         send_home_keyboard(call.message.chat.id, "✅ ভেরিфикации সফল! এখন থেকে সার্ভিস ব্যবহার করতে পারবেন।")
     else: 
         bot.answer_callback_query(call.id, text="❌ আপনি এখনো সমস্ত বাধ্যতামূলক চ্যানেল বা গ্রুপে জয়েন করেননি!", show_alert=True)
@@ -737,5 +752,5 @@ if __name__ == "__main__":
     
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ বট সফলভাবে রান হচ্ছে...")
+    print("🚀 ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ বট সম্পূর্ণ পারফেক্টভাবে রান হচ্ছে...")
     bot.polling(none_stop=True)
