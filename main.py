@@ -2,7 +2,6 @@ import telebot
 import requests
 import os
 import time
-import random
 import json
 from datetime import datetime
 from telebot import types
@@ -41,7 +40,7 @@ def load_config():
             "BALANCE_TEXT": "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।",
             "WITHDRAW_TEXT": "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।",
             "CHANNELS_TO_JOIN": [
-                {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Main Channel"},
+                {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Otp Channel"},
                 {"id": "-1002183552076", "link": "https://t.me/winfanti", "name": "💬 Support Channel"}
             ],
             "GROUPS_TO_JOIN": [
@@ -104,7 +103,6 @@ def get_api_headers():
     return {"X-API-Key": str(config.get("FASTX_API_KEY", "")).strip()}
 
 def get_otp_group_link():
-    # সবসময় সঠিকভাবে OTP Group এর লিঙ্ক রিটার্ন করবে
     for grp in config.get("GROUPS_TO_JOIN", []):
         if "OTP" in grp.get("name", "") or "Group" in grp.get("name", "") or "+" in grp.get("link", ""):
             return grp["link"]
@@ -523,7 +521,7 @@ def request_number(call):
                    f"📞 Number: `{num}`\n\n"
                    f"⏳ Status: Waiting For OTP\n"
                    f"⏰ Validity ➔ 10 minutes\n"
-                   f"💎 নিচে 'Fetch Code' বাটনে ক্লিক করে ওটিপি চেক করুন।")
+                   f"💎 নিচে 'Fetch Code' বাটনে ক্লিক করে বা অটো ওটিপির জন্য অপেক্ষা করুন।")
             
             markup = types.InlineKeyboardMarkup()
             markup.row(
@@ -534,6 +532,9 @@ def request_number(call):
             markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
+            
+            # ব্যাকগ্রাউন্ডে এই নির্দিষ্ট নাম্বারের জন্য অটোমেটিক ওটিপি খোঁজার থ্রেড চালু করা হলো (১০ মিনিট পর্যন্ত চেক করবে)
+            Thread(target=background_user_otp_watcher, args=(call.message.chat.id, call.message.message_id, selected_app, country, num), daemon=True).start()
         else:
             bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ')}", show_alert=True)
     except Exception as e:
@@ -556,9 +557,9 @@ def manual_fetch(call):
     country = data_parts[2]
     num = data_parts[3]
     bot.answer_callback_query(call.id, text="🔍 ওটিপি চেক করা হচ্ছে...")
-    check_and_send_otp(call.message.chat.id, selected_app, country, num, manual=True)
+    check_and_send_otp_manual(call.message.chat.id, selected_app, country, num)
 
-def check_and_send_otp(chat_id, selected_app, country, num, manual=False):
+def check_and_send_otp_manual(chat_id, selected_app, country, num):
     base_url = str(config['BASE_URL']).strip().rstrip('/')
     url = f"{base_url}/success-otp-info"
     
@@ -566,12 +567,12 @@ def check_and_send_otp(chat_id, selected_app, country, num, manual=False):
         res = requests.get(url, headers=get_api_headers(), timeout=15).json()
         if res.get("meta", {}).get("status") == "ok":
             otps_list = res.get("data", {}).get("otps", [])
-            clean_num = str(num).replace("+", "")
+            clean_num = str(num).replace("+", "").strip()
             
             found_msg = None
             for item in otps_list:
-                item_num = str(item.get("number")).replace("+", "")
-                if item_num == clean_num:
+                item_num = str(item.get("number")).replace("+", "").strip()
+                if item_num == clean_num or clean_num.endswith(item_num) or item_num.endswith(clean_num):
                     found_msg = item.get("message") or item.get("sms")
                     break
             
@@ -622,33 +623,93 @@ def check_and_send_otp(chat_id, selected_app, country, num, manual=False):
                     except: pass
                 return True
             else:
-                if manual:
-                    bot.send_message(chat_id, "⚠️ ওটিপি এখনও প্যানেলে আসেনি। একটু পরে আবার চেষ্টা করুন।")
+                bot.send_message(chat_id, "⚠️ ওটিপি এখনও প্যানেলে আসেনি। একটু পরে আবার চেষ্টা করুন।")
         else:
-            if manual:
-                bot.send_message(chat_id, "⚠️ সার্ভার থেকে কোনো ডেটা পাওয়া যায়নি।")
+            bot.send_message(chat_id, "⚠️ সার্ভার থেকে কোনো ডেটা পাওয়া যায়নি।")
     except:
-        if manual:
-            bot.send_message(chat_id, "❌ ওটিপি চেক করতে গিয়ে সমস্যা হয়েছে।")
+        bot.send_message(chat_id, "❌ ওটিপি চেক করতে গিয়ে সমস্যা হয়েছে।")
     return False
 
-def background_live_sms_monitor():
-    countries_pool = [
-        {"name": "Madagascar", "flag": "🇲🇬", "code": "+26134"},
-        {"name": "Ivory Coast", "flag": "🇨🇮", "code": "+22507"},
-        {"name": "Tajikistan", "flag": "🇹🇯", "code": "+99277"},
-        {"name": "Ethiopia", "flag": "🇪🇹", "code": "+25191"}
-    ]
+def background_user_otp_watcher(chat_id, message_id, selected_app, country, num):
+    """ইউজার নাম্বার নেওয়ার পর ব্যাকগ্রাউন্ডে ১০ মিনিট ধরে অটোমেটিক ওটিপি চেক করবে"""
+    base_url = str(config['BASE_URL']).strip().rstrip('/')
+    url = f"{base_url}/success-otp-info"
     
+    clean_num = str(num).replace("+", "").strip()
+    checks = 0
+    while checks < 40: # প্রতি ১৫ সেকেন্ড পর পর মোট ১০ মিনিট (40 * 15s) চেক করবে
+        time.sleep(15)
+        checks += 1
+        try:
+            res = requests.get(url, headers=get_api_headers(), timeout=15).json()
+            if res.get("meta", {}).get("status") == "ok":
+                otps_list = res.get("data", {}).get("otps", [])
+                found_msg = None
+                for item in otps_list:
+                    item_num = str(item.get("number")).replace("+", "").strip()
+                    if item_num == clean_num or clean_num.endswith(item_num) or item_num.endswith(clean_num):
+                        found_msg = item.get("message") or item.get("sms")
+                        break
+                
+                if found_msg:
+                    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
+                    bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
+                    dev_user = config.get("DEV_USERNAME", "Saku_143")
+                    
+                    import re
+                    code_match = re.search(r'\b\d{4,8}\b', found_msg)
+                    isolated_code = code_match.group(0) if code_match else found_msg[:10]
+                    
+                    alert_text = (f"🤖 **{bot_title}**\n"
+                                  f"🇲🇬 **{country} {selected_app.upper()} RECEIVED!**\n\n"
+                                  f"🕒 Time: `{current_time}`\n"
+                                  f"📱 Service: {selected_app.upper()}\n"
+                                  f"📞 Number: `{num}`\n"
+                                  f"🌍 Country: {country}\n"
+                                  f"🔑 OTP: `{isolated_code}`\n\n"
+                                  f"💬 Message:\n{found_msg}")
+                    
+                    user_markup = types.InlineKeyboardMarkup()
+                    user_markup.row(
+                        types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{isolated_code}"),
+                        types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{num}")
+                    )
+                    user_markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
+                    
+                    try:
+                        bot.send_message(chat_id, alert_text, reply_markup=user_markup, parse_mode="Markdown")
+                    except: pass
+                    
+                    group_markup = types.InlineKeyboardMarkup()
+                    group_markup.row(
+                        types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{isolated_code}"),
+                        types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{num}")
+                    )
+                    group_markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
+                    group_markup.row(
+                        types.InlineKeyboardButton("👑 Owner", url=f"https://t.me/{dev_user}"),
+                        types.InlineKeyboardButton("📱 Bot", url=f"https://t.me/{bot_user}")
+                    )
+                    
+                    for dest_id in config.get("OTP_DESTINATIONS", []):
+                        try:
+                            bot.send_message(int(dest_id), alert_text, reply_markup=group_markup, parse_mode="Markdown")
+                        except: pass
+                    return
+        except:
+            pass
+
+def background_live_sms_monitor():
+    """প্যানেল থেকে শুধুমাত্র আসল লাইভ এসএমএসগুলো ফেচ করে গ্রুপ এবং চ্যানেলে পাঠাবে (কোনো ফেইক জেনারেট হবে না)"""
     last_seen_id = 0
     while True:
         try:
-            time.sleep(15)
+            time.sleep(10)
             base_url = str(config['BASE_URL']).strip().rstrip('/')
             url = f"{base_url}/live-console?since={last_seen_id}&limit=10"
             res = requests.get(url, headers=get_api_headers(), timeout=15).json()
             
-            pushed_any = False
             if res.get("meta", {}).get("status") == "ok":
                 data_obj = res.get("data", {})
                 otps_list = data_obj.get("otps", [])
@@ -657,10 +718,9 @@ def background_live_sms_monitor():
                     last_seen_id = max_id
                 
                 for item in otps_list:
-                    pushed_any = True
                     num = item.get("number")
                     otp_code = item.get("otp")
-                    msg_body = item.get("message") or item.get("sms")
+                    msg_body = item.get("message") or item.get("sms") or ""
                     platform = item.get("platform", "Unknown")
                     country = item.get("country", "Global")
                     
@@ -670,7 +730,7 @@ def background_live_sms_monitor():
                     dev_user = config.get("DEV_USERNAME", "Saku_143")
                     
                     import re
-                    code_match = re.search(r'\b\d{4,8}\b', otp_code or msg_body or "")
+                    code_match = re.search(r'\b\d{4,8}\b', otp_code or msg_body)
                     isolated_code = code_match.group(0) if code_match else (otp_code or "N/A")
                     
                     live_alert = (f"🤖 **{bot_title}**\n"
@@ -696,43 +756,6 @@ def background_live_sms_monitor():
                     for dest_id in config.get("OTP_DESTINATIONS", []):
                         try:
                             bot.send_message(int(dest_id), live_alert, reply_markup=markup, parse_mode="Markdown")
-                        except: pass
-            
-            if not res or not res.get("meta", {}).get("status") == "ok":
-                services_keys = list(config.get("SERVICES", {}).keys())
-                if services_keys and random.choice([True, False]):
-                    rand_app = random.choice(services_keys)
-                    c_info = random.choice(countries_pool)
-                    rand_num = f"{c_info['code']}{random.randint(100000, 999999)}"
-                    otp_code = str(random.randint(100000, 999999))
-                    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
-                    bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
-                    dev_user = config.get("DEV_USERNAME", "Saku_143")
-                    
-                    fake_alert = (f"🤖 **{bot_title}**\n"
-                                  f"{c_info['flag']} **{c_info['name']} {rand_app.upper()} RECEIVED!**\n\n"
-                                  f"🕒 Time: `{current_time}`\n"
-                                  f"📱 Service: {rand_app.upper()}\n"
-                                  f"📞 Number: `{rand_num[:6]}***{rand_num[-4:]}`\n"
-                                  f"🌍 Country: {c_info['name']}\n"
-                                  f"🔑 OTP: `{otp_code}`\n\n"
-                                  f"💬 Message:\n# Your {rand_app.capitalize()} verification code is {otp_code}.")
-                    
-                    markup = types.InlineKeyboardMarkup()
-                    markup.row(
-                        types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{otp_code}"),
-                        types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{rand_num}")
-                    )
-                    markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
-                    markup.row(
-                        types.InlineKeyboardButton("👑 Owner", url=f"https://t.me/{dev_user}"),
-                        types.InlineKeyboardButton("📱 Bot", url=f"https://t.me/{bot_user}")
-                    )
-                    
-                    for dest_id in config.get("OTP_DESTINATIONS", []):
-                        try:
-                            bot.send_message(int(dest_id), fake_alert, reply_markup=markup, parse_mode="Markdown")
                         except: pass
         except:
             time.sleep(10)
