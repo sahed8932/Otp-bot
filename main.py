@@ -41,10 +41,11 @@ def load_config():
             "BALANCE_TEXT": "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।",
             "WITHDRAW_TEXT": "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।",
             "CHANNELS_TO_JOIN": [
-                {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Main Channel"}
+                {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Main Channel"},
+                {"id": "-1002183552076", "link": "https://t.me/winfanti", "name": "💬 Support Channel"}
             ],
             "GROUPS_TO_JOIN": [
-                {"id": "-1004309875319", "link": "https://t.me/+DXdDIm7-rRU4YTQ1", "name": "👥 Support Group"}
+                {"id": "-1004309875319", "link": "https://t.me/+DXdDIm7-rRU4YTQ1", "name": "👥 OTP Support Group"}
             ],
             "OTP_DESTINATIONS": [
                 "-1003956226642",
@@ -101,6 +102,15 @@ def is_subscribed_all(user_id):
 
 def get_api_headers():
     return {"X-API-Key": str(config.get("FASTX_API_KEY", "")).strip()}
+
+def get_otp_group_link():
+    # সবসময় সঠিকভাবে OTP Group এর লিঙ্ক রিটার্ন করবে
+    for grp in config.get("GROUPS_TO_JOIN", []):
+        if "OTP" in grp.get("name", "") or "Group" in grp.get("name", "") or "+" in grp.get("link", ""):
+            return grp["link"]
+    if config.get("GROUPS_TO_JOIN"):
+        return config["GROUPS_TO_JOIN"][0]["link"]
+    return "https://t.me/+DXdDIm7-rRU4YTQ1"
 
 def send_home_keyboard(chat_id, text=None):
     track_user(chat_id)
@@ -180,7 +190,9 @@ def handle_text(message):
         bot.send_message(message.chat.id, "🔐 2FA কোড জেনারেট করার জন্য আপনার সিক্রেট কোডটি দিন।", parse_mode="Markdown")
     elif text == "🤖 Create Your own bot":
         dev_user = config.get("DEV_USERNAME", "Saku_143")
-        bot.send_message(message.chat.id, f"🤖 আপনার নিজস্ব ওটিপি বা এসএমএস হাবে বট বানাতে চাইলে সরাসরি যোগাযোগ করুন: @{dev_user}", parse_mode="Markdown")
+        markup = types.InlineKeyboardMarkup()
+        markup.row(types.InlineKeyboardButton("👨‍💻 Contact Developer", url=f"https://t.me/{dev_user}"))
+        bot.send_message(message.chat.id, f"🤖 আপনার নিজস্ব ওটিপি বট বানাতে চাইলে সরাসরি আমার সাথে যোগাযোগ করুন: @{dev_user}", reply_markup=markup, parse_mode="Markdown")
     elif text == "🛠 Admin Dashboard" and message.chat.id == int(config["ADMIN_ID"]):
         show_admin_dashboard(message.chat.id)
 
@@ -315,7 +327,7 @@ def wizard_add_app(call):
         bot.register_next_step_handler(msg, wizard_get_custom_app_name)
     else:
         admin_temp_data[chat_id] = {"app": app_target}
-        msg = bot.send_message(chat_id, f"🌍 আপনি **{app_target.upper()}** সিলেক্ট করেছেন።\n\nএখন দেশের কোড এবং রেঞ্জ আইডি (শেষে XXX সহ) এভাবে লিখে পাঠান:\n*উদাহরণ:* `US 22501XXX`")
+        msg = bot.send_message(chat_id, f"🌍 আপনি **{app_target.upper()}** সিলেক্ট করেছেন।\n\nএখন দেশের কোড এবং রেঞ্জ আইডি (শেষে XXX সহ) এভাবে লিখে পাঠান:\n*উদাহরণ:* `US 22501XXX`")
         bot.register_next_step_handler(msg, wizard_save_rid)
 
 def wizard_get_custom_app_name(message):
@@ -519,8 +531,7 @@ def request_number(call):
                 types.InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country}_{selected_app}")
             )
             markup.row(types.InlineKeyboardButton("📋 Copy Number", callback_data=f"copynum_{num}"))
-            if config["CHANNELS_TO_JOIN"]:
-                markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=config["CHANNELS_TO_JOIN"][0]["link"]))
+            markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
         else:
@@ -568,6 +579,7 @@ def check_and_send_otp(chat_id, selected_app, country, num, manual=False):
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
                 bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
+                dev_user = config.get("DEV_USERNAME", "Saku_143")
                 
                 import re
                 code_match = re.search(r'\b\d{4,8}\b', found_msg)
@@ -587,8 +599,7 @@ def check_and_send_otp(chat_id, selected_app, country, num, manual=False):
                     types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{isolated_code}"),
                     types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{num}")
                 )
-                if config["CHANNELS_TO_JOIN"]:
-                    user_markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=config["CHANNELS_TO_JOIN"][0]["link"]))
+                user_markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
                 
                 try:
                     bot.send_message(chat_id, alert_text, reply_markup=user_markup, parse_mode="Markdown")
@@ -599,10 +610,9 @@ def check_and_send_otp(chat_id, selected_app, country, num, manual=False):
                     types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{isolated_code}"),
                     types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{num}")
                 )
-                if config["CHANNELS_TO_JOIN"]:
-                    group_markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=config["CHANNELS_TO_JOIN"][0]["link"]))
+                group_markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
                 group_markup.row(
-                    types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
+                    types.InlineKeyboardButton("👑 Owner", url=f"https://t.me/{dev_user}"),
                     types.InlineKeyboardButton("📱 Bot", url=f"https://t.me/{bot_user}")
                 )
                 
@@ -657,6 +667,7 @@ def background_live_sms_monitor():
                     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
                     bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
+                    dev_user = config.get("DEV_USERNAME", "Saku_143")
                     
                     import re
                     code_match = re.search(r'\b\d{4,8}\b', otp_code or msg_body or "")
@@ -676,10 +687,9 @@ def background_live_sms_monitor():
                         types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{isolated_code}"),
                         types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{num}")
                     )
-                    if config["CHANNELS_TO_JOIN"]:
-                        markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=config["CHANNELS_TO_JOIN"][0]["link"]))
+                    markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
                     markup.row(
-                        types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
+                        types.InlineKeyboardButton("👑 Owner", url=f"https://t.me/{dev_user}"),
                         types.InlineKeyboardButton("📱 Bot", url=f"https://t.me/{bot_user}")
                     )
                     
@@ -698,6 +708,7 @@ def background_live_sms_monitor():
                     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
                     bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
+                    dev_user = config.get("DEV_USERNAME", "Saku_143")
                     
                     fake_alert = (f"🤖 **{bot_title}**\n"
                                   f"{c_info['flag']} **{c_info['name']} {rand_app.upper()} RECEIVED!**\n\n"
@@ -713,10 +724,9 @@ def background_live_sms_monitor():
                         types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{otp_code}"),
                         types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{rand_num}")
                     )
-                    if config["CHANNELS_TO_JOIN"]:
-                        markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=config["CHANNELS_TO_JOIN"][0]["link"]))
+                    markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
                     markup.row(
-                        types.InlineKeyboardButton("👑 Owner", url=config["CHANNELS_TO_JOIN"][0]["link"] if config["CHANNELS_TO_JOIN"] else "https://t.me/"),
+                        types.InlineKeyboardButton("👑 Owner", url=f"https://t.me/{dev_user}"),
                         types.InlineKeyboardButton("📱 Bot", url=f"https://t.me/{bot_user}")
                     )
                     
@@ -752,5 +762,5 @@ if __name__ == "__main__":
     
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ বট সম্পূর্ণ পারফেক্টভাবে রান হচ্ছে...")
+    print("🚀 ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ বট সম্পূর্ণ নিখুঁতভাবে রান হচ্ছে...")
     bot.polling(none_stop=True)
