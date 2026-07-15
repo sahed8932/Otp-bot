@@ -10,12 +10,6 @@ from telebot import types
 from flask import Flask
 from threading import Thread
 
-# MongoDB library import for persistent storage on cloud platforms like Render
-try:
-    import pymongo
-except ImportError:
-    pymongo = None
-
 CONFIG_FILE = "config.json"
 USERS_FILE = "users.json"
 
@@ -24,41 +18,7 @@ range_hits_tracker = collections.defaultdict(list)
 last_announced_range = {}
 seen_console_hits = set()
 
-def get_mongo_client():
-    if pymongo:
-        # Check environment variables first
-        mongo_uri = os.environ.get("MONGO_URI") or load_config_raw_file().get("MONGO_URI")
-        if mongo_uri:
-            try:
-                client = pymongo.MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-                # Quick ping to verify connection
-                client.admin.command('ping')
-                return client
-            except Exception as e:
-                print(f"⚠️ MongoDB Connection Failed: {e}. Falling back to Local Files.")
-    return None
-
-def load_config_raw_file():
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r") as f:
-                return json.load(f)
-        except:
-            pass
-    return {}
-
 def load_users():
-    client = get_mongo_client()
-    if client:
-        try:
-            db = client["voltxsms_bot"]
-            col = db["users"]
-            user_doc = col.find_one({"_id": "users_list"})
-            if user_doc:
-                return set(user_doc.get("users", []))
-        except Exception as e:
-            print(f"Error loading users from MongoDB: {e}")
-            
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE, "r") as f:
@@ -68,26 +28,17 @@ def load_users():
     return set()
 
 def save_users(users_set):
-    client = get_mongo_client()
-    if client:
-        try:
-            db = client["voltxsms_bot"]
-            col = db["users"]
-            col.replace_one({"_id": "users_list"}, {"_id": "users_list", "users": list(users_set)}, upsert=True)
-        except Exception as e:
-            print(f"Error saving users to MongoDB: {e}")
-            
     with open(USERS_FILE, "w") as f:
         json.dump(list(users_set), f)
 
 def load_config():
+    # User's exact requested SERVICES structure
     default_config = {
         "BOT_TOKEN": "8979736100:AAG_8ILyTgjuWxpSG1v2kgdRWv4nCPeycws", 
-        "FASTX_API_KEY": "MCZJ7C79228",  # Voltxsms API Key 
+        "FASTX_API_KEY": "MCZJ7C79228",  # Voltxsms API Key
         "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api", # Voltxsms base path
         "ADMIN_ID": 8262679678,
-        "MONGO_URI": "", # Option to put MongoDB URI inside config if not using environment variables
-        "BOT_NAME": "Receive your verification code", 
+        "BOT_NAME": "receive🔐 your verification code", 
         "BOT_USERNAME": "SHS_SMSHUB_bot", 
         "DEV_USERNAME": "Saku_143",
         "BALANCE_TEXT": "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।",
@@ -105,37 +56,44 @@ def load_config():
         ],
         "NOTICE": "⚠️ সার্ভিসটি ফুল স্পিডে সচল রয়েছে। কোনো সমস্যা হলে গ্রুপে জানান।",
         "SERVICES": {
-            "facebook": {"name": "📘 Facebook", "rids": {"US": "22501XXX", "GB": "26134XXX"}},
-            "whatsapp": {"name": "💚 WhatsApp", "rids": {"US": "22501XXX", "KG": "99655XXX"}},
-            "instagram": {"name": "📸 Instagram", "rids": {"US": "21640XXX"}},
-            "tiktok": {"name": "🎵 Tiktok", "rids": {"US": "22501XXX"}},
-            "imo": {"name": "📱 IMO", "rids": {"US": "2011XXX"}}
+            "facebook": {
+                "name": "📘 Facebook",
+                "rids": {
+                    "Guinea 🇬🇳": "22467XXX",
+                    "Liberia 🇱🇷": "236744XXX",
+                    "Liberia (Lonestar) 🇱🇷": "23674719129XXX"
+                }
+            },
+            "whatsapp": {
+                "name": "💚 WhatsApp",
+                "rids": {}
+            },
+            "instagram": {
+                "name": "📸 Instagram",
+                "rids": {
+                    "Guinea 🇬🇳": "22467XXX"
+                }
+            },
+            "tiktok": {
+                "name": "🎵 TikTok",
+                "rids": {
+                    "Liberia (Lonestar) 🇱🇷": "23674719129XXX"
+                }
+            },
+            "imo": {
+                "name": "📱 IMO",
+                "rids": {
+                    "Guinea 🇬🇳": "22465XXX"
+                }
+            }
         }
     }
     
-    client = get_mongo_client()
-    if client:
-        try:
-            db = client["voltxsms_bot"]
-            col = db["config"]
-            db_config = col.find_one({"_id": "bot_config"})
-            if db_config:
-                # Merge missing default config values
-                for k, v in default_config.items():
-                    if k not in db_config:
-                        db_config[k] = v
-                return db_config
-            else:
-                col.insert_one({"_id": "bot_config", **default_config})
-                return default_config
-        except Exception as e:
-            print(f"Error loading config from MongoDB: {e}")
-
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
                 loaded = json.load(f)
-                # Keep original base url updated
+                # Ensure the BASE_URL is set to Voltxsms
                 if "2eee7.com" in loaded.get("BASE_URL", ""):
                     loaded["BASE_URL"] = default_config["BASE_URL"]
                 return loaded
@@ -147,15 +105,6 @@ def load_config():
         return default_config
 
 def save_config(config_data):
-    client = get_mongo_client()
-    if client:
-        try:
-            db = client["voltxsms_bot"]
-            col = db["config"]
-            col.replace_one({"_id": "bot_config"}, {"_id": "bot_config", **config_data}, upsert=True)
-        except Exception as e:
-            print(f"Error saving config to MongoDB: {e}")
-            
     with open(CONFIG_FILE, "w") as f:
         json.dump(config_data, f, indent=4)
 
@@ -386,7 +335,7 @@ def handle_admin_callbacks(call):
     elif data == "adm_setbal":
         msg = bot.send_message(chat_id, "👉 নতুন Balance মেসেজটি লিখে পাঠান:")
         bot.register_next_step_handler(msg, save_balance_text)
-    elif data == "adm_setall":
+    elif data == "adm_setwd":
         msg = bot.send_message(chat_id, "👉 নতুন Withdraw মেসেজটি লিখে পাঠান:")
         bot.register_next_step_handler(msg, save_withdraw_text)
     elif data == "adm_setbotuser":
@@ -569,7 +518,7 @@ def save_bot_username(message):
 def save_dev_username(message):
     config["DEV_USERNAME"] = message.text.strip().replace("@", "")
     save_config(config)
-    bot.send_message(message.chat.id, "✅ ডেভেলপার ইউজারনেম আপডেট হয়েছে।")
+    bot.send_message(message.chat.id, "✅ ডেভেলপার ইউজারনেম আপডেট হয়েছে。")
     show_admin_dashboard(message.chat.id)
 
 def save_api_key(message):
@@ -633,7 +582,7 @@ def request_number(call):
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
             
-            # ব্যাকগ্রাউন্ডে ১০ মিনিট ওটিপি খোঁজার থ্রেড চালু করা হলো
+            # ব্যাকগ্রাউন্ডে ১০ মিনিট ওটিপি চেক করার থ্রেড চালু করা হলো
             Thread(target=background_user_otp_watcher, args=(call.message.chat.id, call.message.message_id, selected_app, country, num), daemon=True).start()
         else:
             bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ')}", show_alert=True)
