@@ -3,15 +3,62 @@ import requests
 import os
 import time
 import json
+import re
+import collections
 from datetime import datetime
 from telebot import types
 from flask import Flask
 from threading import Thread
 
+# MongoDB library import for persistent storage on cloud platforms like Render
+try:
+    import pymongo
+except ImportError:
+    pymongo = None
+
 CONFIG_FILE = "config.json"
 USERS_FILE = "users.json"
 
+# In-memory tracking for high speed detection
+range_hits_tracker = collections.defaultdict(list)
+last_announced_range = {}
+seen_console_hits = set()
+
+def get_mongo_client():
+    if pymongo:
+        # Check environment variables first
+        mongo_uri = os.environ.get("MONGO_URI") or load_config_raw_file().get("MONGO_URI")
+        if mongo_uri:
+            try:
+                client = pymongo.MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+                # Quick ping to verify connection
+                client.admin.command('ping')
+                return client
+            except Exception as e:
+                print(f"⚠️ MongoDB Connection Failed: {e}. Falling back to Local Files.")
+    return None
+
+def load_config_raw_file():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
 def load_users():
+    client = get_mongo_client()
+    if client:
+        try:
+            db = client["voltxsms_bot"]
+            col = db["users"]
+            user_doc = col.find_one({"_id": "users_list"})
+            if user_doc:
+                return set(user_doc.get("users", []))
+        except Exception as e:
+            print(f"Error loading users from MongoDB: {e}")
+            
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE, "r") as f:
@@ -21,49 +68,94 @@ def load_users():
     return set()
 
 def save_users(users_set):
+    client = get_mongo_client()
+    if client:
+        try:
+            db = client["voltxsms_bot"]
+            col = db["users"]
+            col.replace_one({"_id": "users_list"}, {"_id": "users_list", "users": list(users_set)}, upsert=True)
+        except Exception as e:
+            print(f"Error saving users to MongoDB: {e}")
+            
     with open(USERS_FILE, "w") as f:
         json.dump(list(users_set), f)
 
 def load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
-    else:
-        default_config = {
-            "BOT_TOKEN": "8979736100:AAG_8ILyTgjuWxpSG1v2kgdRWv4nCPeycws", 
-            "FASTX_API_KEY": "MURAD_2644EC4B5AE7448B0AC51802", 
-            "BASE_URL": "https://2eee7.com/@Access/@Bot/2eee7/@public/api",
-            "ADMIN_ID": 8262679678,
-            "BOT_NAME": "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ", 
-            "BOT_USERNAME": "SHS_SMSHUB_bot", 
-            "DEV_USERNAME": "Saku_143",
-            "BALANCE_TEXT": "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।",
-            "WITHDRAW_TEXT": "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।",
-            "CHANNELS_TO_JOIN": [
-                {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Otp Channel"},
-                {"id": "-1002183552076", "link": "https://t.me/winfanti", "name": "💬 Support Channel"}
-            ],
-            "GROUPS_TO_JOIN": [
-                {"id": "-1004309875319", "link": "https://t.me/+DXdDIm7-rRU4YTQ1", "name": "👥 OTP Support Group"}
-            ],
-            "OTP_DESTINATIONS": [
-                "-1003956226642",
-                "-1004309875319"
-            ],
-            "NOTICE": "⚠️ সার্ভিসটি ফুল স্পিডে সচল রয়েছে। কোনো সমস্যা হলে গ্রুপে জানান।",
-            "SERVICES": {
-                "facebook": {"name": "📘 Facebook", "rids": {"US": "22501XXX", "GB": "26134XXX"}},
-                "whatsapp": {"name": "💚 WhatsApp", "rids": {"US": "22501XXX", "KG": "99655XXX"}},
-                "instagram": {"name": "📸 Instagram", "rids": {"US": "21640XXX"}},
-                "tiktok": {"name": "🎵 Tiktok", "rids": {"US": "22501XXX"}},
-                "imo": {"name": "📱 IMO", "rids": {"US": "2011XXX"}}
-            }
+    default_config = {
+        "BOT_TOKEN": "8979736100:AAG_8ILyTgjuWxpSG1v2kgdRWv4nCPeycws", 
+        "FASTX_API_KEY": "MCZJ7C79228",  # Voltxsms API Key 
+        "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api", # Voltxsms base path
+        "ADMIN_ID": 8262679678,
+        "MONGO_URI": "", # Option to put MongoDB URI inside config if not using environment variables
+        "BOT_NAME": "Receive your verification code", 
+        "BOT_USERNAME": "SHS_SMSHUB_bot", 
+        "DEV_USERNAME": "Saku_143",
+        "BALANCE_TEXT": "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।",
+        "WITHDRAW_TEXT": "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।",
+        "CHANNELS_TO_JOIN": [
+            {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Otp Channel"},
+            {"id": "-1002183552076", "link": "https://t.me/winfanti", "name": "💬 Support Channel"}
+        ],
+        "GROUPS_TO_JOIN": [
+            {"id": "-1004309875319", "link": "https://t.me/+DXdDIm7-rRU4YTQ1", "name": "👥 OTP Support Group"}
+        ],
+        "OTP_DESTINATIONS": [
+            "-1003956226642",
+            "-1004309875319"
+        ],
+        "NOTICE": "⚠️ সার্ভিসটি ফুল স্পিডে সচল রয়েছে। কোনো সমস্যা হলে গ্রুপে জানান।",
+        "SERVICES": {
+            "facebook": {"name": "📘 Facebook", "rids": {"US": "22501XXX", "GB": "26134XXX"}},
+            "whatsapp": {"name": "💚 WhatsApp", "rids": {"US": "22501XXX", "KG": "99655XXX"}},
+            "instagram": {"name": "📸 Instagram", "rids": {"US": "21640XXX"}},
+            "tiktok": {"name": "🎵 Tiktok", "rids": {"US": "22501XXX"}},
+            "imo": {"name": "📱 IMO", "rids": {"US": "2011XXX"}}
         }
+    }
+    
+    client = get_mongo_client()
+    if client:
+        try:
+            db = client["voltxsms_bot"]
+            col = db["config"]
+            db_config = col.find_one({"_id": "bot_config"})
+            if db_config:
+                # Merge missing default config values
+                for k, v in default_config.items():
+                    if k not in db_config:
+                        db_config[k] = v
+                return db_config
+            else:
+                col.insert_one({"_id": "bot_config", **default_config})
+                return default_config
+        except Exception as e:
+            print(f"Error loading config from MongoDB: {e}")
+
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                loaded = json.load(f)
+                # Keep original base url updated
+                if "2eee7.com" in loaded.get("BASE_URL", ""):
+                    loaded["BASE_URL"] = default_config["BASE_URL"]
+                return loaded
+        except:
+            return default_config
+    else:
         with open(CONFIG_FILE, "w") as f:
             json.dump(default_config, f, indent=4)
         return default_config
 
 def save_config(config_data):
+    client = get_mongo_client()
+    if client:
+        try:
+            db = client["voltxsms_bot"]
+            col = db["config"]
+            col.replace_one({"_id": "bot_config"}, {"_id": "bot_config", **config_data}, upsert=True)
+        except Exception as e:
+            print(f"Error saving config to MongoDB: {e}")
+            
     with open(CONFIG_FILE, "w") as f:
         json.dump(config_data, f, indent=4)
 
@@ -74,7 +166,7 @@ admin_temp_data = {}
 all_users = load_users()
 
 @app.route('/')
-def home(): return "Fast X OTP Bot is Live & Active!"
+def home(): return "Voltxsms OTP Bot is Live & Active!"
 
 def run(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 def keep_alive(): Thread(target=run).start()
@@ -100,7 +192,17 @@ def is_subscribed_all(user_id):
     return True
 
 def get_api_headers():
-    return {"X-API-Key": str(config.get("FASTX_API_KEY", "")).strip()}
+    return {
+        "mauthapi": str(config.get("FASTX_API_KEY", "")).strip(),
+        "Content-Type": "application/json"
+    }
+
+def format_rid(rid):
+    # Strips trailing "XXX" (case-insensitive) for Voltxsms compatibility
+    rid_str = str(rid).strip()
+    if rid_str.upper().endswith("XXX"):
+        return rid_str[:-3]
+    return rid_str
 
 def get_otp_group_link():
     for grp in config.get("GROUPS_TO_JOIN", []):
@@ -199,7 +301,7 @@ def fetch_live_traffic(chat_id):
     url = f"{base_url}/liveaccess"
     try:
         res = requests.get(url, headers=get_api_headers(), timeout=15).json()
-        if res.get("status") == "ok" or "services" in res:
+        if res.get("meta", {}).get("status") == "ok" or "services" in res.get("data", {}):
             bot.send_message(chat_id, "📊 **Active Traffic Status:** 100% Online & Connected!", parse_mode="Markdown")
         else:
             bot.send_message(chat_id, "📊 Traffic Active (API Connected)")
@@ -231,7 +333,7 @@ def show_admin_dashboard(chat_id):
     bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
     dev_user = config.get("DEV_USERNAME", "Saku_143")
     
-    text = (f"🛠 **അഡ്മിന്‍ കണ്ട്രോള്‍ പാനല്‍ (Fast X OTP)**\n\n"
+    text = (f"🛠 **അഡ്മിന്‍ കണ്ട്രോള്‍ പാനല്‍ (Voltxsms)**\n\n"
             f"• Bot Name: `{bot_title}`\n"
             f"• Bot Username: `@{bot_user}`\n"
             f"• Dev Username: `@{dev_user}`\n"
@@ -284,7 +386,7 @@ def handle_admin_callbacks(call):
     elif data == "adm_setbal":
         msg = bot.send_message(chat_id, "👉 নতুন Balance মেসেজটি লিখে পাঠান:")
         bot.register_next_step_handler(msg, save_balance_text)
-    elif data == "adm_setwd":
+    elif data == "adm_setall":
         msg = bot.send_message(chat_id, "👉 নতুন Withdraw মেসেজটি লিখে পাঠান:")
         bot.register_next_step_handler(msg, save_withdraw_text)
     elif data == "adm_setbotuser":
@@ -294,7 +396,7 @@ def handle_admin_callbacks(call):
         msg = bot.send_message(chat_id, "👉 ডেভেলপার ইউজারনেম লিখুন (@ ছাড়া):")
         bot.register_next_step_handler(msg, save_dev_username)
     elif data == "adm_setkey":
-        msg = bot.send_message(chat_id, "👉 আপনার নতুন Fast X OTP API Key টি পাঠান:")
+        msg = bot.send_message(chat_id, "👉 আপনার নতুন Voltxsms API Key টি পাঠান:")
         bot.register_next_step_handler(msg, save_api_key)
     elif data == "adm_back":
         show_admin_dashboard(chat_id)
@@ -455,7 +557,7 @@ def save_balance_text(message):
 def save_withdraw_text(message):
     config["WITHDRAW_TEXT"] = message.text.strip()
     save_config(config)
-    bot.send_message(message.chat.id, "✅ উইথড্র টেক্সট আপডেট হয়েছে।")
+    bot.send_message(message.chat.id, "✅ ওটিপি আপডেট হয়েছে।")
     show_admin_dashboard(message.chat.id)
 
 def save_bot_username(message):
@@ -497,16 +599,14 @@ def show_countries(call):
 def request_number(call):
     _, country, selected_app = call.data.split("_")
     rid = config["SERVICES"][selected_app]["rids"].get(country)
+    formatted_rid = format_rid(rid)
     
     base_url = str(config['BASE_URL']).strip().rstrip('/')
     url = f"{base_url}/getnum"
-    payload = {"range": str(rid)}
+    payload = {"rid": str(formatted_rid)}
     
     try:
         response = requests.post(url, json=payload, headers=get_api_headers(), timeout=20)
-        if response.status_code != 200 or "bad_request" in response.text:
-            response = requests.post(url, data=payload, headers=get_api_headers(), timeout=20)
-            
         if response.status_code != 200:
             bot.answer_callback_query(call.id, text=f"❌ সার্ভার কোড: {response.status_code}", show_alert=True)
             return
@@ -533,7 +633,7 @@ def request_number(call):
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
             
-            # ব্যাকগ্রাউন্ডে এই নির্দিষ্ট নাম্বারের জন্য অটোমেটিক ওটিপি খোঁজার থ্রেড চালু করা হলো (১০ মিনিট পর্যন্ত চেক করবে)
+            # ব্যাকগ্রাউন্ডে ১০ মিনিট ওটিপি খোঁজার থ্রেড চালু করা হলো
             Thread(target=background_user_otp_watcher, args=(call.message.chat.id, call.message.message_id, selected_app, country, num), daemon=True).start()
         else:
             bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ')}", show_alert=True)
@@ -561,7 +661,7 @@ def manual_fetch(call):
 
 def check_and_send_otp_manual(chat_id, selected_app, country, num):
     base_url = str(config['BASE_URL']).strip().rstrip('/')
-    url = f"{base_url}/success-otp-info"
+    url = f"{base_url}/success-otp"
     
     try:
         res = requests.get(url, headers=get_api_headers(), timeout=15).json()
@@ -582,7 +682,6 @@ def check_and_send_otp_manual(chat_id, selected_app, country, num):
                 bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
                 dev_user = config.get("DEV_USERNAME", "Saku_143")
                 
-                import re
                 code_match = re.search(r'\b\d{4,8}\b', found_msg)
                 isolated_code = code_match.group(0) if code_match else found_msg[:10]
                 
@@ -631,13 +730,13 @@ def check_and_send_otp_manual(chat_id, selected_app, country, num):
     return False
 
 def background_user_otp_watcher(chat_id, message_id, selected_app, country, num):
-    """ইউজার নাম্বার নেওয়ার পর ব্যাকগ্রাউন্ডে ১০ মিনিট ধরে অটোমেটিক ওটিপি চেক করবে"""
+    """ইউজার নাম্বার নেওয়ার পর ব্যাকগ্রাউন্ডে ১০ মিনিট ধরে রিয়েল অটো ওটিপি চেক করবে (কোনো ফেক ওটিপি জেনারেট করবে না)"""
     base_url = str(config['BASE_URL']).strip().rstrip('/')
-    url = f"{base_url}/success-otp-info"
+    url = f"{base_url}/success-otp"
     
     clean_num = str(num).replace("+", "").strip()
     checks = 0
-    while checks < 40: # প্রতি ১৫ সেকেন্ড পর পর মোট ১০ মিনিট (40 * 15s) চেক করবে
+    while checks < 40: # প্রতি ১৫ সেকেন্ড পর পর মোট ১০ মিনিট চেক করবে
         time.sleep(15)
         checks += 1
         try:
@@ -657,7 +756,6 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
                     bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
                     dev_user = config.get("DEV_USERNAME", "Saku_143")
                     
-                    import re
                     code_match = re.search(r'\b\d{4,8}\b', found_msg)
                     isolated_code = code_match.group(0) if code_match else found_msg[:10]
                     
@@ -701,51 +799,82 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
             pass
 
 def background_live_sms_monitor():
-    """প্যানেল থেকে শুধুমাত্র আসল লাইভ এসএমএসগুলো ফেচ করে গ্রুপ এবং চ্যানেলে পাঠাবে (কোনো ফেইক জেনারেট হবে না)"""
-    last_seen_id = 0
+    """প্যানেল কনসোল থেকে শুধুমাত্র আসল লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপে অ্যালার্ট দেয়"""
+    global seen_console_hits, range_hits_tracker, last_announced_range
     while True:
         try:
-            time.sleep(10)
+            time.sleep(15)
             base_url = str(config['BASE_URL']).strip().rstrip('/')
-            url = f"{base_url}/live-console?since={last_seen_id}&limit=10"
+            url = f"{base_url}/console"
             res = requests.get(url, headers=get_api_headers(), timeout=15).json()
             
             if res.get("meta", {}).get("status") == "ok":
                 data_obj = res.get("data", {})
-                otps_list = data_obj.get("otps", [])
-                max_id = data_obj.get("max_id", last_seen_id)
-                if max_id > last_seen_id:
-                    last_seen_id = max_id
+                hits_list = data_obj.get("hits", [])
                 
-                for item in otps_list:
-                    num = item.get("number")
-                    otp_code = item.get("otp")
-                    msg_body = item.get("message") or item.get("sms") or ""
-                    platform = item.get("platform", "Unknown")
-                    country = item.get("country", "Global")
+                for item in hits_list:
+                    range_val = item.get("range", "Unknown")
+                    platform = item.get("sid", "Global")
+                    msg_body = item.get("message") or ""
+                    time_val = item.get("time") or time.time()
                     
+                    hit_id = f"{msg_body}_{time_val}"
+                    if hit_id in seen_console_hits:
+                        continue
+                    seen_console_hits.add(hit_id)
+                    
+                    # Keep console logs cache size limited
+                    if len(seen_console_hits) > 1000:
+                        seen_console_hits.clear()
+                        
+                    current_time_epoch = time.time()
+                    
+                    # --- হাই-স্পিড রেঞ্জ ডিটেকশন লজিক ---
+                    key = (range_val, platform)
+                    range_hits_tracker[key].append(current_time_epoch)
+                    
+                    # ৩ মিনিটের বেশি পুরোনো রেকর্ডগুলো বাদ দেওয়া হচ্ছে
+                    range_hits_tracker[key] = [t for t in range_hits_tracker[key] if current_time_epoch - t < 180]
+                    
+                    # যদি ৩ মিনিটে ৩ বা তার বেশি হিট আসে, তবে হাই-স্পিড হিসেবে চিহ্নিত করা হবে
+                    if len(range_hits_tracker[key]) >= 3:
+                        last_announce = last_announced_range.get(key, 0)
+                        # অ্যালার্ট স্প্যামিং রুখতে ১৫ মিনিটের কুলডাউন মেইনটেইন করা হচ্ছে
+                        if current_time_epoch - last_announce > 900:
+                            last_announced_range[key] = current_time_epoch
+                            
+                            speed_alert = (
+                                f"🚀 **HIGH SPEED RANGE DETECTED!** 🚀\n\n"
+                                f"🔥 **Service:** {str(platform).upper()}\n"
+                                f"🌍 **Range:** `{range_val}`\n"
+                                f"⚡ **Status:** Super Fast OTP Delivery!\n\n"
+                                f"💡 এই রেঞ্জে দ্রুত নম্বর নিয়ে কাজ করুন, ওটিপি সাথে সাথে আসছে!"
+                            )
+                            for dest_id in config.get("OTP_DESTINATIONS", []):
+                                try:
+                                    bot.send_message(int(dest_id), speed_alert, parse_mode="Markdown")
+                                except: pass
+                    # ------------------------------------
+
                     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
                     bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
                     dev_user = config.get("DEV_USERNAME", "Saku_143")
                     
-                    import re
-                    code_match = re.search(r'\b\d{4,8}\b', otp_code or msg_body)
-                    isolated_code = code_match.group(0) if code_match else (otp_code or "N/A")
+                    code_match = re.search(r'\b\d{4,8}\b', msg_body)
+                    isolated_code = code_match.group(0) if code_match else "N/A"
                     
                     live_alert = (f"🤖 **{bot_title}**\n"
-                                  f"🌐 **{country} {str(platform).upper()} LIVE OTP!**\n\n"
+                                  f"🌐 **{str(platform).upper()} LIVE OTP!**\n\n"
                                   f"🕒 Time: `{current_time}`\n"
                                   f"📱 Service: {str(platform).upper()}\n"
-                                  f"📞 Number: `{num}`\n"
-                                  f"🌍 Country: {country}\n"
+                                  f"⚡ Range: `{range_val}`\n"
                                   f"🔑 OTP: `{isolated_code}`\n\n"
                                   f"💬 Message:\n{msg_body}")
                     
                     markup = types.InlineKeyboardMarkup()
                     markup.row(
-                        types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{isolated_code}"),
-                        types.InlineKeyboardButton("📞 Copy Number", callback_data=f"copynum_{num}")
+                        types.InlineKeyboardButton("📋 Copy OTP", callback_data=f"copyotp_{isolated_code}")
                     )
                     markup.row(types.InlineKeyboardButton("🔗 View OTP Group", url=get_otp_group_link()))
                     markup.row(
@@ -758,7 +887,7 @@ def background_live_sms_monitor():
                             bot.send_message(int(dest_id), live_alert, reply_markup=markup, parse_mode="Markdown")
                         except: pass
         except:
-            time.sleep(10)
+            time.sleep(15)
 
 @bot.callback_query_handler(func=lambda call: call.data == "back_services")
 def back_to_serv(call): send_services_menu(call.message.chat.id, call.message.message_id)
@@ -785,5 +914,5 @@ if __name__ == "__main__":
     
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
-    print("🚀 ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ বট সম্পূর্ণ নিখুঁতভাবে রান হচ্ছে...")
+    print("🚀 ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ (Voltxsms version) সফলভাবে রানিং...")
     bot.polling(none_stop=True)
