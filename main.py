@@ -22,14 +22,19 @@ def load_users():
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE, "r") as f:
-                return set(json.load(f))
+                data = json.load(f)
+                # Ensure all IDs are loaded as integers
+                return set(int(uid) for uid in data if str(uid).isdigit())
         except:
             return set()
     return set()
 
 def save_users(users_set):
-    with open(USERS_FILE, "w") as f:
-        json.dump(list(users_set), f)
+    try:
+        with open(USERS_FILE, "w") as f:
+            json.dump(list(users_set), f)
+    except:
+        pass
 
 def get_country_info_by_range(range_val):
     """রেঞ্জ আইডি দেখে পতাকা ও দেশের নাম শনাক্ত করার ডায়নামিক ট্র্যাকার"""
@@ -51,7 +56,9 @@ def get_country_info_by_range(range_val):
                 return country
     
     # ২. মিল না পাওয়া গেলে প্রিফিক্স অনুযায়ী কমন কান্ট্রি ম্যাপ করবে
-    if prefix_range.startswith("224"):
+    if prefix_range.startswith("236747") or prefix_range.startswith("231747"):
+        return "Liberia (Lonestar) 🇱🇷"
+    elif prefix_range.startswith("224"):
         return "Guinea 🇬🇳"
     elif prefix_range.startswith("236") or prefix_range.startswith("231"):
         return "Liberia 🇱🇷"
@@ -65,15 +72,37 @@ def get_country_info_by_range(range_val):
         return "United Kingdom 🇬🇧"
     elif prefix_range.startswith("1"):
         return "United States 🇺🇸"
+    elif prefix_range.startswith("880"):
+        return "Bangladesh 🇧🇩"
+    elif prefix_range.startswith("91"):
+        return "India 🇮🇳"
+    elif prefix_range.startswith("92"):
+        return "Pakistan 🇵🇰"
+    elif prefix_range.startswith("7"):
+        return "Russia/Kazakhstan 🇷🇺"
+    elif prefix_range.startswith("380"):
+        return "Ukraine 🇺🇦"
+    elif prefix_range.startswith("62"):
+        return "Indonesia 🇮🇩"
+    elif prefix_range.startswith("60"):
+        return "Malaysia 🇲🇾"
+    elif prefix_range.startswith("63"):
+        return "Philippines 🇵🇭"
+    elif prefix_range.startswith("84"):
+        return "Vietnam 🇻🇳"
+    elif prefix_range.startswith("234"):
+        return "Nigeria 🇳🇬"
     
+    # ৩. জেনেরিক ফলব্যাক যদি লিস্টে না পাওয়া যায়
+    if len(prefix_range) >= 3:
+        return f"Country (+{prefix_range[:3]}) 🌍"
     return "Global 🌐"
 
 def load_config():
-    # User's exact requested SERVICES structure
     default_config = {
         "BOT_TOKEN": "8979736100:AAG_8ILyTgjuWxpSG1v2kgdRWv4nCPeycws", 
-        "FASTX_API_KEY": "MCZJ7C79228",  # Voltxsms API Key
-        "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api", # Voltxsms base path
+        "FASTX_API_KEY": "MCZJ7C79228",  
+        "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api", 
         "ADMIN_ID": 8262679678,
         "BOT_NAME": "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ", 
         "BOT_USERNAME": "SHS_SMSHUB_bot", 
@@ -130,7 +159,6 @@ def load_config():
         try:
             with open(CONFIG_FILE, "r") as f:
                 loaded = json.load(f)
-                # Ensure the BASE_URL is set to Voltxsms
                 if "2eee7.com" in loaded.get("BASE_URL", ""):
                     loaded["BASE_URL"] = default_config["BASE_URL"]
                 return loaded
@@ -159,9 +187,13 @@ def keep_alive(): Thread(target=run).start()
 
 def track_user(user_id):
     global all_users
-    if user_id not in all_users:
-        all_users.add(user_id)
-        save_users(all_users)
+    try:
+        u_id = int(user_id)
+        if u_id not in all_users:
+            all_users.add(u_id)
+            save_users(all_users)
+    except:
+        pass
 
 def is_subscribed_all(user_id):
     if user_id == int(config["ADMIN_ID"]): return True 
@@ -184,7 +216,6 @@ def get_api_headers():
     }
 
 def format_rid(rid):
-    # Strips trailing "XXX" (case-insensitive) for Voltxsms compatibility
     rid_str = str(rid).strip()
     if rid_str.upper().endswith("XXX"):
         return rid_str[:-3]
@@ -319,7 +350,7 @@ def show_admin_dashboard(chat_id):
     bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
     dev_user = config.get("DEV_USERNAME", "Saku_143")
     
-    text = (f"🛠 **അഡ്മിന്‍ കണ്ട്രോള്‍ പാനല്‍ (Voltxsms)**\n\n"
+    text = (f"🛠 **অ্যাডমিন কন্ট্রোল প্যানেল (Voltxsms)**\n\n"
             f"• Bot Name: `{bot_title}`\n"
             f"• Bot Username: `@{bot_user}`\n"
             f"• Dev Username: `@{dev_user}`\n"
@@ -394,12 +425,25 @@ def process_broadcast(message):
     status_msg = bot.send_message(chat_id, "🚀 ব্রডকাস্ট শুরু হয়েছে, দয়া করে অপেক্ষা করুন...")
     
     for uid in list(all_users):
+        # Admin এর নিজের কাছে যেন ব্রডকাস্ট রিটার্ন না আসে সেজন্য Admin ID স্কিপ করা হচ্ছে
+        if int(uid) == int(config["ADMIN_ID"]):
+            continue
+            
         try:
             bot.copy_message(chat_id=int(uid), from_chat_id=chat_id, message_id=message.message_id)
             success += 1
-            time.sleep(0.1)
+            time.sleep(0.05)
         except:
-            failed += 1
+            # copy_message ফেইল হলে সাধারণ টেক্সট মেসেজ পাঠানোর ব্যাকআপ ট্রাই করবে
+            try:
+                if message.text:
+                    bot.send_message(int(uid), message.text)
+                    success += 1
+                    time.sleep(0.05)
+                else:
+                    failed += 1
+            except:
+                failed += 1
             
     bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, 
                           text=f"✅ ব্রডকাস্ট সম্পন্ন!\n\n• সফলভাবে পাঠানো হয়েছে: `{success}` জনের কাছে\n• ফেইল হয়েছে: `{failed}` জনের কাছে", parse_mode="Markdown")
@@ -619,7 +663,6 @@ def request_number(call):
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
             
-            # ব্যাকগ্রাউন্ডে ১০ মিনিট ওটিপি চেক করার থ্রেড চালু করা হলো
             Thread(target=background_user_otp_watcher, args=(call.message.chat.id, call.message.message_id, selected_app, country, num), daemon=True).start()
         else:
             bot.answer_callback_query(call.id, text=f"❌ প্যানেল: {res.get('message', 'নম্বর স্টক শেষ')}", show_alert=True)
@@ -716,13 +759,12 @@ def check_and_send_otp_manual(chat_id, selected_app, country, num):
     return False
 
 def background_user_otp_watcher(chat_id, message_id, selected_app, country, num):
-    """ইউজার নাম্বার নেওয়ার পর ব্যাকগ্রাউন্ডে ১০ মিনিট ধরে রিয়েল অটো ওটিপি চেক করবে (কোনো ফেক ওটিপি জেনারেট করবে না)"""
     base_url = str(config['BASE_URL']).strip().rstrip('/')
     url = f"{base_url}/success-otp"
     
     clean_num = str(num).replace("+", "").strip()
     checks = 0
-    while checks < 40: # প্রতি ১৫ সেকেন্ড পর পর মোট ১০ মিনিট চেক করবে
+    while checks < 40:
         time.sleep(15)
         checks += 1
         try:
@@ -785,7 +827,7 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
             pass
 
 def background_live_sms_monitor():
-    """প্যানেল কনসোল থেকে শুধুমাত্র আসল লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপে দেশের নাম ও পতাকাসহ অ্যালার্ট দেয়"""
+    """প্যানেল কনসোল থেকে লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে সরাসরি সমস্ত ইউজারের ইনবক্সে অ্যালার্ট দেয়"""
     global seen_console_hits, range_hits_tracker, last_announced_range
     while True:
         try:
@@ -809,26 +851,23 @@ def background_live_sms_monitor():
                         continue
                     seen_console_hits.add(hit_id)
                     
-                    # Keep console logs cache size limited
                     if len(seen_console_hits) > 1000:
                         seen_console_hits.clear()
                         
                     current_time_epoch = time.time()
-                    
-                    # দেশের নাম ও পতাকা শনাক্তকরণ
                     country_name = get_country_info_by_range(range_val)
                     
                     # --- হাই-স্পিড রেঞ্জ ডিটেকশন লজিক ---
                     key = (range_val, platform)
                     range_hits_tracker[key].append(current_time_epoch)
                     
-                    # ৩ মিনিটের বেশি পুরোনো রেকর্ডগুলো বাদ দেওয়া হচ্ছে
+                    # ৩ মিনিটের বেশি পুরোনো রেকর্ডগুলো ফিল্টার করা
                     range_hits_tracker[key] = [t for t in range_hits_tracker[key] if current_time_epoch - t < 180]
                     
-                    # যদি ৩ মিনিটে ৩ বা তার বেশি হিট আসে, তবে হাই-স্পিড হিসেবে চিহ্নিত করা হবে
+                    # ৩ মিনিটে ৩ বা তার বেশি হিট আসলে স্পিড নোটিফিকেশন জেনারেট করবে
                     if len(range_hits_tracker[key]) >= 3:
                         last_announce = last_announced_range.get(key, 0)
-                        # অ্যালার্ট স্প্যামিং রুখতে ১৫ মিনিটের কুলডাউন মেইনটেইন করা হচ্ছে
+                        # কুলডাউন ১৫ মিনিট
                         if current_time_epoch - last_announce > 900:
                             last_announced_range[key] = current_time_epoch
                             
@@ -840,9 +879,11 @@ def background_live_sms_monitor():
                                 f"📶 **Status:** Super Fast OTP Delivery!\n\n"
                                 f"💡 এই রেঞ্জে দ্রুত নম্বর নিয়ে কাজ করুন, ওটিপি সাথে সাথে আসছে!"
                             )
-                            for dest_id in config.get("OTP_DESTINATIONS", []):
+                            # গ্রুপে না পাঠিয়ে সরাসরি বটের সমস্ত ইউজারের কাছে ইনবক্সে মেসেজ যাবে
+                            for uid in list(all_users):
                                 try:
-                                    bot.send_message(int(dest_id), speed_alert, parse_mode="Markdown")
+                                    bot.send_message(int(uid), speed_alert, parse_mode="Markdown")
+                                    time.sleep(0.05)
                                 except: pass
                     # ------------------------------------
 
@@ -880,6 +921,82 @@ def background_live_sms_monitor():
         except:
             time.sleep(15)
 
+def background_services_sync():
+    """রিয়েলটাইমে প্যানেলের অ্যাক্টিভ রেঞ্জ ও কান্ট্রি ডিটেক্ট করে বটের সার্ভিস লিস্ট আপডেট করার স্বয়ংক্রিয় থ্রেড"""
+    while True:
+        try:
+            base_url = str(config['BASE_URL']).strip().rstrip('/')
+            url = f"{base_url}/liveaccess"
+            response = requests.get(url, headers=get_api_headers(), timeout=15)
+            if response.status_code == 200:
+                res = response.json()
+                if res.get("meta", {}).get("status") == "ok":
+                    data_obj = res.get("data", {})
+                    services_data = data_obj.get("services", [])
+                    
+                    temp_services = {}
+                    services_list = []
+                    
+                    # ডেটা ফরম্যাট নরমাল করা
+                    if isinstance(services_data, list):
+                        services_list = services_data
+                    elif isinstance(services_data, dict):
+                        for k, v in services_data.items():
+                            if isinstance(v, dict):
+                                services_list.append({
+                                    "service": k,
+                                    "ranges": v.get("ranges", [])
+                                })
+                            elif isinstance(v, list):
+                                services_list.append({
+                                    "service": k,
+                                    "ranges": v
+                                })
+                    
+                    # সার্ভিসগুলোর রেঞ্জ লুপ চালানো
+                    for item in services_list:
+                        service_id = item.get("service") or item.get("sid") or item.get("name")
+                        if not service_id:
+                            continue
+                        
+                        service_id = str(service_id).lower().strip()
+                        ranges = item.get("ranges", [])
+                        
+                        # ডিফল্ট প্রদর্শনীর নাম
+                        display_name_map = {
+                            "facebook": "📘 Facebook",
+                            "whatsapp": "💚 WhatsApp",
+                            "instagram": "📸 Instagram",
+                            "tiktok": "🎵 TikTok",
+                            "imo": "📱 IMO",
+                            "telegram": "✈️ Telegram"
+                        }
+                        service_name = display_name_map.get(service_id, f"✨ {service_id.capitalize()}")
+                        
+                        if service_id not in temp_services:
+                            temp_services[service_id] = {
+                                "name": service_name,
+                                "rids": {}
+                            }
+                        
+                        for range_val in ranges:
+                            if not range_val:
+                                continue
+                            range_str = str(range_val).strip()
+                            country_name = get_country_info_by_range(range_str)
+                            temp_services[service_id]["rids"][country_name] = range_str
+                    
+                    # প্যানেল থেকে প্রাপ্ত সচল সার্ভিস ডেটা থাকলে বটের সার্ভিস তালিকা আপডেট করা হচ্ছে
+                    if temp_services:
+                        config["SERVICES"] = temp_services
+                        save_config(config)
+            
+        except:
+            pass
+        
+        # ৬০ সেকেন্ড অন্তর অন্তর প্যানেলের সাথে সিঙ্ক হবে
+        time.sleep(60)
+
 @bot.callback_query_handler(func=lambda call: call.data == "back_services")
 def back_to_serv(call): send_services_menu(call.message.chat.id, call.message.message_id)
 
@@ -901,7 +1018,10 @@ def check(call):
 
 if __name__ == "__main__":
     keep_alive()
+    # ব্যাকগ্রাউন্ড লাইভ ওটিপি মনিটর স্টার্ট
     Thread(target=background_live_sms_monitor, daemon=True).start()
+    # ব্যাকগ্রাউন্ড সার্ভিস ও রেঞ্জ সিঙ্ক মনিটর স্টার্ট
+    Thread(target=background_services_sync, daemon=True).start()
     
     try: bot.delete_webhook(drop_pending_updates=True)
     except: pass
