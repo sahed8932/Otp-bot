@@ -13,17 +13,17 @@ from threading import Thread
 CONFIG_FILE = "config.json"
 USERS_FILE = "users.json"
 
-# In-memory tracking for high speed detection
+# In-memory tracking for high speed detection and DM rate limits
 range_hits_tracker = collections.defaultdict(list)
 last_announced_range = {}
 seen_console_hits = set()
+dm_speed_alert_timestamps = [] # ইনবক্স নোটিফিকেশনের দৈনিক লিমিট ট্র্যাকার
 
 def load_users():
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE, "r") as f:
                 data = json.load(f)
-                # Ensure all IDs are loaded as integers
                 return set(int(uid) for uid in data if str(uid).isdigit())
         except:
             return set()
@@ -92,6 +92,10 @@ def get_country_info_by_range(range_val):
         return "Vietnam 🇻🇳"
     elif prefix_range.startswith("234"):
         return "Nigeria 🇳🇬"
+    elif prefix_range.startswith("232"):
+        return "Sierra Leone 🇸🇱"
+    elif prefix_range.startswith("228"):
+        return "Togo 🇹🇬"
     
     # ৩. জেনেরিক ফলব্যাক যদি লিস্টে না পাওয়া যায়
     if len(prefix_range) >= 3:
@@ -425,7 +429,6 @@ def process_broadcast(message):
     status_msg = bot.send_message(chat_id, "🚀 ব্রডকাস্ট শুরু হয়েছে, দয়া করে অপেক্ষা করুন...")
     
     for uid in list(all_users):
-        # Admin এর নিজের কাছে যেন ব্রডকাস্ট রিটার্ন না আসে সেজন্য Admin ID স্কিপ করা হচ্ছে
         if int(uid) == int(config["ADMIN_ID"]):
             continue
             
@@ -434,7 +437,6 @@ def process_broadcast(message):
             success += 1
             time.sleep(0.05)
         except:
-            # copy_message ফেইল হলে সাধারণ টেক্সট মেসেজ পাঠানোর ব্যাকআপ ট্রাই করবে
             try:
                 if message.text:
                     bot.send_message(int(uid), message.text)
@@ -827,8 +829,8 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
             pass
 
 def background_live_sms_monitor():
-    """প্যানেল কনসোল থেকে লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে সরাসরি সমস্ত ইউজারের ইনবক্সে অ্যালার্ট দেয়"""
-    global seen_console_hits, range_hits_tracker, last_announced_range
+    """কনসোল থেকে লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপ ও ইনবক্সে অ্যালার্ট দেয়"""
+    global seen_console_hits, range_hits_tracker, last_announced_range, dm_speed_alert_timestamps
     while True:
         try:
             time.sleep(15)
@@ -867,7 +869,7 @@ def background_live_sms_monitor():
                     # ৩ মিনিটে ৩ বা তার বেশি হিট আসলে স্পিড নোটিফিকেশন জেনারেট করবে
                     if len(range_hits_tracker[key]) >= 3:
                         last_announce = last_announced_range.get(key, 0)
-                        # কুলডাউন ১৫ মিনিট
+                        # কুলডাউন ১৫ মিনিট (অ্যালার্টের পুনরাবৃত্তি কমাতে)
                         if current_time_epoch - last_announce > 900:
                             last_announced_range[key] = current_time_epoch
                             
@@ -879,12 +881,24 @@ def background_live_sms_monitor():
                                 f"📶 **Status:** Super Fast OTP Delivery!\n\n"
                                 f"💡 এই রেঞ্জে দ্রুত নম্বর নিয়ে কাজ করুন, ওটিপি সাথে সাথে আসছে!"
                             )
-                            # গ্রুপে না পাঠিয়ে সরাসরি বটের সমস্ত ইউজারের কাছে ইনবক্সে মেসেজ যাবে
-                            for uid in list(all_users):
+                            
+                            # ১. গ্রুপ ও চ্যানেলে যেভাবে ইচ্ছে সেভাবে লিমিট ছাড়া রিয়েল-টাইমে পোস্ট হতে থাকবে
+                            for dest_id in config.get("OTP_DESTINATIONS", []):
                                 try:
-                                    bot.send_message(int(uid), speed_alert, parse_mode="Markdown")
-                                    time.sleep(0.05)
+                                    bot.send_message(int(dest_id), speed_alert, parse_mode="Markdown")
                                 except: pass
+                                
+                            # ২. ইউজার বিরক্ত হওয়া রোধে বটে/ইনবক্সে সারাদিনে সর্বোচ্চ ৪ বার নোটিফিকেশন যাবে (২৪ ঘণ্টার লিমিট)
+                            now = time.time()
+                            dm_speed_alert_timestamps = [t for t in dm_speed_alert_timestamps if now - t < 86400]
+                            
+                            if len(dm_speed_alert_timestamps) < 4:
+                                dm_speed_alert_timestamps.append(now)
+                                for uid in list(all_users):
+                                    try:
+                                        bot.send_message(int(uid), speed_alert, parse_mode="Markdown")
+                                        time.sleep(0.05)
+                                    except: pass
                     # ------------------------------------
 
                     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -922,7 +936,10 @@ def background_live_sms_monitor():
             time.sleep(15)
 
 def background_services_sync():
-    """রিয়েলটাইমে প্যানেলের অ্যাক্টিভ রেঞ্জ ও কান্ট্রি ডিটেক্ট করে বটের সার্ভিস লিস্ট আপডেট করার স্বয়ংক্রিয় থ্রেড"""
+    """রিয়েলটাইমে প্যানেলের অ্যাক্টিভ রেঞ্জ ও কান্ট্রি ডিটেক্ট করে বটের নির্দিষ্ট সচল সার্ভিস তালিকা আপডেট করার থ্রেড"""
+    # শুধুমাত্র এই ৬টি সার্ভিসকে অনুমোদন দেওয়া হচ্ছে
+    ALLOWED_SERVICES = {"facebook", "tiktok", "imo", "instagram", "whatsapp", "discord"}
+    
     while True:
         try:
             base_url = str(config['BASE_URL']).strip().rstrip('/')
@@ -937,7 +954,6 @@ def background_services_sync():
                     temp_services = {}
                     services_list = []
                     
-                    # ডেটা ফরম্যাট নরমাল করা
                     if isinstance(services_data, list):
                         services_list = services_data
                     elif isinstance(services_data, dict):
@@ -953,23 +969,26 @@ def background_services_sync():
                                     "ranges": v
                                 })
                     
-                    # সার্ভিসগুলোর রেঞ্জ লুপ চালানো
                     for item in services_list:
                         service_id = item.get("service") or item.get("sid") or item.get("name")
                         if not service_id:
                             continue
                         
                         service_id = str(service_id).lower().strip()
+                        
+                        # শুধুমাত্র অনুমোদিত ৬টি সার্ভিস এখানে ফিল্টার হবে
+                        if service_id not in ALLOWED_SERVICES:
+                            continue
+                        
                         ranges = item.get("ranges", [])
                         
-                        # ডিফল্ট প্রদর্শনীর নাম
                         display_name_map = {
                             "facebook": "📘 Facebook",
                             "whatsapp": "💚 WhatsApp",
                             "instagram": "📸 Instagram",
                             "tiktok": "🎵 TikTok",
                             "imo": "📱 IMO",
-                            "telegram": "✈️ Telegram"
+                            "discord": "👾 Discord"
                         }
                         service_name = display_name_map.get(service_id, f"✨ {service_id.capitalize()}")
                         
@@ -986,7 +1005,6 @@ def background_services_sync():
                             country_name = get_country_info_by_range(range_str)
                             temp_services[service_id]["rids"][country_name] = range_str
                     
-                    # প্যানেল থেকে প্রাপ্ত সচল সার্ভিস ডেটা থাকলে বটের সার্ভিস তালিকা আপডেট করা হচ্ছে
                     if temp_services:
                         config["SERVICES"] = temp_services
                         save_config(config)
@@ -994,7 +1012,6 @@ def background_services_sync():
         except:
             pass
         
-        # ৬০ সেকেন্ড অন্তর অন্তর প্যানেলের সাথে সিঙ্ক হবে
         time.sleep(60)
 
 @bot.callback_query_handler(func=lambda call: call.data == "back_services")
@@ -1018,9 +1035,7 @@ def check(call):
 
 if __name__ == "__main__":
     keep_alive()
-    # ব্যাকগ্রাউন্ড লাইভ ওটিপি মনিটর স্টার্ট
     Thread(target=background_live_sms_monitor, daemon=True).start()
-    # ব্যাকগ্রাউন্ড সার্ভিস ও রেঞ্জ সিঙ্ক মনিটর স্টার্ট
     Thread(target=background_services_sync, daemon=True).start()
     
     try: bot.delete_webhook(drop_pending_updates=True)
