@@ -31,6 +31,43 @@ def save_users(users_set):
     with open(USERS_FILE, "w") as f:
         json.dump(list(users_set), f)
 
+def get_country_info_by_range(range_val):
+    """রেঞ্জ আইডি দেখে পতাকা ও দেশের নাম শনাক্ত করার ডায়নামিক ট্র্যাকার"""
+    if not range_val:
+        return "Global 🌐"
+    
+    clean_range = str(range_val).strip().upper()
+    prefix_range = clean_range.replace("XXX", "")
+    
+    # ১. প্রথমে বটের কনফিগার করা সার্ভিস থেকে চেক করবে
+    services = config.get("SERVICES", {})
+    for s_id, s_info in services.items():
+        rids = s_info.get("rids", {})
+        for country, rid_val in rids.items():
+            clean_rid = str(rid_val).strip().upper()
+            prefix_rid = clean_rid.replace("XXX", "")
+            
+            if prefix_range == prefix_rid or clean_range == clean_rid or clean_range.startswith(prefix_rid) or prefix_rid.startswith(prefix_range):
+                return country
+    
+    # ২. মিল না পাওয়া গেলে প্রিফিক্স অনুযায়ী কমন কান্ট্রি ম্যাপ করবে
+    if prefix_range.startswith("224"):
+        return "Guinea 🇬🇳"
+    elif prefix_range.startswith("236") or prefix_range.startswith("231"):
+        return "Liberia 🇱🇷"
+    elif prefix_range.startswith("225"):
+        return "Ivory Coast 🇨🇮"
+    elif prefix_range.startswith("261"):
+        return "Madagascar 🇲🇬"
+    elif prefix_range.startswith("996"):
+        return "Kyrgyzstan 🇰🇬"
+    elif prefix_range.startswith("44"):
+        return "United Kingdom 🇬🇧"
+    elif prefix_range.startswith("1"):
+        return "United States 🇺🇸"
+    
+    return "Global 🌐"
+
 def load_config():
     # User's exact requested SERVICES structure
     default_config = {
@@ -38,7 +75,7 @@ def load_config():
         "FASTX_API_KEY": "MCZJ7C79228",  # Voltxsms API Key
         "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api", # Voltxsms base path
         "ADMIN_ID": 8262679678,
-        "BOT_NAME": "receive🔐 your verification code", 
+        "BOT_NAME": "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ", 
         "BOT_USERNAME": "SHS_SMSHUB_bot", 
         "DEV_USERNAME": "Saku_143",
         "BALANCE_TEXT": "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।",
@@ -518,7 +555,7 @@ def save_bot_username(message):
 def save_dev_username(message):
     config["DEV_USERNAME"] = message.text.strip().replace("@", "")
     save_config(config)
-    bot.send_message(message.chat.id, "✅ ডেভেলপার ইউজারনেম আপডেট হয়েছে。")
+    bot.send_message(message.chat.id, "✅ ডেভেলপার ইউজারনেম আপডেট হয়েছে।")
     show_admin_dashboard(message.chat.id)
 
 def save_api_key(message):
@@ -748,7 +785,7 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
             pass
 
 def background_live_sms_monitor():
-    """প্যানেল কনসোল থেকে শুধুমাত্র আসল লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপে অ্যালার্ট দেয়"""
+    """প্যানেল কনসোল থেকে শুধুমাত্র আসল লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপে দেশের নাম ও পতাকাসহ অ্যালার্ট দেয়"""
     global seen_console_hits, range_hits_tracker, last_announced_range
     while True:
         try:
@@ -778,6 +815,9 @@ def background_live_sms_monitor():
                         
                     current_time_epoch = time.time()
                     
+                    # দেশের নাম ও পতাকা শনাক্তকরণ
+                    country_name = get_country_info_by_range(range_val)
+                    
                     # --- হাই-স্পিড রেঞ্জ ডিটেকশন লজিক ---
                     key = (range_val, platform)
                     range_hits_tracker[key].append(current_time_epoch)
@@ -795,8 +835,9 @@ def background_live_sms_monitor():
                             speed_alert = (
                                 f"🚀 **HIGH SPEED RANGE DETECTED!** 🚀\n\n"
                                 f"🔥 **Service:** {str(platform).upper()}\n"
-                                f"🌍 **Range:** `{range_val}`\n"
-                                f"⚡ **Status:** Super Fast OTP Delivery!\n\n"
+                                f"🌍 **Country:** {country_name}\n"
+                                f"⚡ **Range:** `{range_val}`\n"
+                                f"📶 **Status:** Super Fast OTP Delivery!\n\n"
                                 f"💡 এই রেঞ্জে দ্রুত নম্বর নিয়ে কাজ করুন, ওটিপি সাথে সাথে আসছে!"
                             )
                             for dest_id in config.get("OTP_DESTINATIONS", []):
@@ -814,10 +855,11 @@ def background_live_sms_monitor():
                     isolated_code = code_match.group(0) if code_match else "N/A"
                     
                     live_alert = (f"🤖 **{bot_title}**\n"
-                                  f"🌐 **{str(platform).upper()} LIVE OTP!**\n\n"
+                                  f"🌐 **{country_name} {str(platform).upper()} LIVE OTP!**\n\n"
                                   f"🕒 Time: `{current_time}`\n"
                                   f"📱 Service: {str(platform).upper()}\n"
                                   f"⚡ Range: `{range_val}`\n"
+                                  f"🌍 Country: {country_name}\n"
                                   f"🔑 OTP: `{isolated_code}`\n\n"
                                   f"💬 Message:\n{msg_body}")
                     
