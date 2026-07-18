@@ -6,7 +6,7 @@ import json
 import re
 import collections
 from datetime import datetime
-from telebot import types
+from telebot import types, apihelper
 from flask import Flask
 from threading import Thread
 
@@ -24,18 +24,28 @@ def load_users():
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE, "r") as f:
-                data = json.load(f)
-                return set(int(uid) for uid in data if str(uid).isdigit())
-        except:
+                content = f.read().strip()
+                if not content:
+                    return set()
+                data = json.loads(content)
+                users = set()
+                for uid in data:
+                    try:
+                        users.add(int(uid))
+                    except (ValueError, TypeError):
+                        pass
+                return users
+        except Exception as e:
+            print(f"Error loading users: {e}")
             return set()
     return set()
 
 def save_users(users_set):
     try:
         with open(USERS_FILE, "w") as f:
-            json.dump(list(users_set), f)
-    except:
-        pass
+            json.dump(list(users_set), f, indent=4)
+    except Exception as e:
+        print(f"Error saving users: {e}")
 
 def get_country_info_by_range(range_val):
     """রেঞ্জ আইডি দেখে পতাকা ও দেশের নাম শনাক্ত করার ডায়নামিক ট্র্যাকার (স্ট্যাটিক ও নির্ভুল ম্যাপ)"""
@@ -149,9 +159,11 @@ def get_country_info_by_range(range_val):
         "49": "Germany 🇩🇪"
     }
     
-    for prefix, country in prefix_map.items():
+    # দীর্ঘতম প্রিফিক্স আগে মেলানোর জন্য দৈর্ঘ্য অনুযায়ী ডিসেন্ডিং সর্টিং
+    sorted_prefixes = sorted(prefix_map.keys(), key=len, reverse=True)
+    for prefix in sorted_prefixes:
         if prefix_range.startswith(prefix):
-            return country
+            return prefix_map[prefix]
             
     # নিখুঁত মিল না পাওয়া গেলে প্রিফিক্সের দৈর্ঘ্য অনুযায়ী ফলব্যাক ট্র্যাকিং
     if len(prefix_range) >= 3:
@@ -241,9 +253,23 @@ def save_config(config_data):
 
 config = load_config()
 bot = telebot.TeleBot(config["BOT_TOKEN"])
+apihelper.ENABLE_MIDDLEWARE = True # মিডলওয়্যার সক্রিয় করা হলো
 app = Flask('')
 admin_temp_data = {}
 all_users = load_users()
+
+# স্বয়ংক্রিয় ইউজার ট্র্যাকার মিডলওয়্যার (বাটন ক্লিক বা মেসেজ পেলেই আইডি সেভ হবে)
+@bot.middleware_handler(update_types=['message', 'callback_query'])
+def auto_track_user(bot_instance, package):
+    try:
+        if hasattr(package, 'chat') and package.chat:
+            track_user(package.chat.id)
+        elif hasattr(package, 'message') and package.message and package.message.chat:
+            track_user(package.message.chat.id)
+    except Exception as e:
+        print(f"Error in tracking middleware: {e}")
+
+def os_alive(): return "Live & Active"
 
 @app.route('/')
 def home(): return "Voltxsms OTP Bot is Live & Active!"
@@ -315,7 +341,6 @@ def send_services_menu(chat_id, message_id=None):
     services = config.get("SERVICES", {})
     row = []
     for s_id, s_info in services.items():
-        # সচল রেঞ্জ থাকলে ড্যাশবোর্ডে দেখাবে, না থাকলে দেখাবে না
         if s_info.get("rids"):
             row.append(types.InlineKeyboardButton(s_info["name"], callback_data=f"app_{s_id}"))
             if len(row) == 2:
@@ -403,7 +428,6 @@ def send_available_countries(chat_id):
 
 def show_admin_dashboard(chat_id):
     markup = types.InlineKeyboardMarkup()
-    # রেঞ্জ আইডি অ্যাড এবং কাস্টম অ্যাপ অ্যাড সম্পূর্ণ আলাদা বাটন হিসেবে বিভক্ত করা হলো
     markup.row(types.InlineKeyboardButton("➕ Add Range ID", callback_data="adm_addrid"),
                types.InlineKeyboardButton("✨ Add Custom App", callback_data="adm_addcustom"))
     markup.row(types.InlineKeyboardButton("🗑 Delete Range ID", callback_data="adm_delrid"))
@@ -499,12 +523,17 @@ def process_broadcast(message):
     chat_id = message.chat.id
     success = 0
     failed = 0
+    
+    # অ্যাডমিন আইডি ছাড়া অন্য সকল টার্গেট ইউজারদের লিস্ট তৈরি
+    target_users = [uid for uid in all_users if int(uid) != int(config["ADMIN_ID"])]
+    
+    if not target_users:
+        bot.send_message(chat_id, "❌ **ব্রডকাস্ট ব্যর্থ!**\n\nবটের ডাটাবেজে কোনো সচল সাধারণ ইউজার খুঁজে পাওয়া যায়নি (শুধুমাত্র অ্যাডমিন আইডি সংরক্ষিত রয়েছে)। নতুন কোনো ইউজার বট স্টার্ট করলে বা বাটনে প্রেস করলে তাদের আইডি ডাটাবেজে যুক্ত হয়ে যাবে।", parse_mode="Markdown")
+        return
+        
     status_msg = bot.send_message(chat_id, "🚀 ব্রডকাস্ট শুরু হয়েছে, দয়া করে অপেক্ষা করুন...")
     
-    for uid in list(all_users):
-        if int(uid) == int(config["ADMIN_ID"]):
-            continue
-            
+    for uid in target_users:
         try:
             bot.copy_message(chat_id=int(uid), from_chat_id=chat_id, message_id=message.message_id)
             success += 1
@@ -521,7 +550,7 @@ def process_broadcast(message):
                 failed += 1
             
     bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, 
-                          text=f"✅ ব্রডকাস্ট সম্পন্ন!\n\n• সফলভাবে পাঠানো হয়েছে: `{success}` জনের কাছে\n• ফেইল হয়েছে: `{failed}` জনের কাছে", parse_mode="Markdown")
+                          text=f"✅ **ব্রডকাস্ট সম্পন্ন!**\n\n• সফলভাবে পাঠানো হয়েছে: `{success}` জনের কাছে\n• ফেইল হয়েছে: `{failed}` জনের কাছে", parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("addrid_target_"))
 def wizard_add_rid_target(call):
@@ -908,9 +937,10 @@ def detect_service_from_message(msg_body, fallback_platform):
     """SMS বডির টেক্সট দেখে রিয়েল-টাইম ক্যাটাগরি ও সার্ভিস ম্যাপ করার ডাইনামিক ফিল্টার"""
     body_lower = str(msg_body).lower()
     
-    if "instagram" in body_lower or "ig code" in body_lower:
+    # ইন্সটাগ্রামের জন্য ক্রস-ওভার কি-ওয়ার্ড ফিল্টার
+    if any(kw in body_lower for kw in ["instagram", "ig-", "ig code", "insta", "ig_"]):
         return "instagram"
-    elif "facebook" in body_lower or "fb code" in body_lower or "fb-" in body_lower:
+    elif any(kw in body_lower for kw in ["facebook", "fb-", "fb code", "meta"]):
         return "facebook"
     elif "whatsapp" in body_lower or "wa code" in body_lower:
         return "whatsapp"
@@ -925,7 +955,7 @@ def detect_service_from_message(msg_body, fallback_platform):
     plat_lower = str(fallback_platform).lower().strip()
     if plat_lower in ["tg", "telegram"]:
         return "telegram"
-    elif plat_lower in ["ig", "instagram", "ins"]:
+    elif plat_lower in ["ig", "instagram", "ins", "insta", "inst"]:
         return "instagram"
     elif plat_lower in ["fb", "facebook"]:
         return "facebook"
@@ -977,7 +1007,6 @@ def background_live_sms_monitor():
                     # ৩ মিনিটে ৩ বা তার বেশি হিট আসলে স্পিড নোটিফিকেশন জেনারেট করবে
                     if len(range_hits_tracker[key]) >= 3:
                         last_announce = last_announced_range.get(key, 0)
-                        # কুলডাউন ১৫ মিনিট (চ্যানেল/গ্রুপ অ্যালার্টের পুনরাবৃত্তি কমাতে)
                         if current_time_epoch - last_announce > 900:
                             last_announced_range[key] = current_time_epoch
                             
@@ -990,13 +1019,11 @@ def background_live_sms_monitor():
                                 f"💡 এই রেঞ্জে দ্রুত নম্বর নিয়ে কাজ করুন, ওটিপি সাথে সাথে আসছে!"
                             )
                             
-                            # ১. গ্রুপ ও চ্যানেলে পোস্ট হতে থাকবে
                             for dest_id in config.get("OTP_DESTINATIONS", []):
                                 try:
                                     bot.send_message(int(dest_id), speed_alert, parse_mode="Markdown")
                                 except: pass
                                 
-                            # ২. ইউজারদের ইনবক্সে প্রতি ১ ঘণ্টায় সর্বোচ্চ ১টি স্পিড অ্যালার্ট পাঠানো হবে (গ্লোবাল ১ ঘণ্টার লিমিট)
                             if current_time_epoch - last_global_dm_broadcast_time > 3600:
                                 last_global_dm_broadcast_time = current_time_epoch
                                 for uid in list(all_users):
@@ -1065,12 +1092,11 @@ def background_services_sync():
                     
                     temp_services = {}
                     
-                    # কোর সার্ভিস এবং অ্যাডমিন প্যানেল থেকে অ্যাড করা কাস্টম সার্ভিস তালিকা
+                    # কোর সার্ভিস এবং কাস্টম সার্ভিস তালিকা
                     core_services = {"facebook", "whatsapp", "instagram", "imo", "telegram", "discord"}
                     custom_services = set(config.get("CUSTOM_SERVICES", []))
                     ALLOWED_SERVICES = core_services.union(custom_services)
                     
-                    # প্রতিটি অনুমোদিত ক্যাটাগরি ফ্রেস অবজেক্ট দিয়ে ইনিশিয়েট করা হচ্ছে
                     for service_id in ALLOWED_SERVICES:
                         display_name_map = {
                             "facebook": "📘 Facebook",
@@ -1087,7 +1113,6 @@ def background_services_sync():
                             "rids": {}
                         }
                     
-                    # শুধুমাত্র এপিআই থেকে প্রাপ্ত স্পেসিফিক সচল রেঞ্জগুলো সার্ভিস অনুযায়ী ম্যাপ হবে
                     for item in services_list:
                         service_id = item.get("service") or item.get("sid") or item.get("name")
                         if not service_id:
@@ -1095,10 +1120,9 @@ def background_services_sync():
                         
                         service_id = str(service_id).lower().strip()
                         
-                        # সার্ভিস আইডি নরমালাইজেশন
                         if service_id in ["tg", "telegram"]:
                             service_id = "telegram"
-                        elif service_id in ["ig", "instagram", "ins"]:
+                        elif service_id in ["ig", "instagram", "ins", "insta", "inst"]:
                             service_id = "instagram"
                         elif service_id in ["fb", "facebook"]:
                             service_id = "facebook"
@@ -1115,28 +1139,15 @@ def background_services_sync():
                                 country_name = get_country_info_by_range(r_str)
                                 temp_services[service_id]["rids"][country_name] = r_str
                     
-                    # --- INSTAGRAM SPECIFIC LOGIC (ইউজারের চাহিদানুযায়ী মডিফিকেশন) ---
-                    # ১. ফেসবুকের সচল রেঞ্জগুলো ইনস্টাগ্রামে কপি করা হচ্ছে (যেহেতু মেটা রেঞ্জ একই এবং ওটিপি ফেসবুক রেঞ্জ দিয়েও আসে)
-                    if "facebook" in temp_services and "instagram" in temp_services:
-                        for country, r_str in temp_services["facebook"]["rids"].items():
-                            if country not in temp_services["instagram"]["rids"]:
-                                temp_services["instagram"]["rids"][country] = r_str
-                    
-                    # ২. ইনস্টাগ্রামের দেশের সংখ্যা ৪-৫ টি (সর্বোচ্চ ১০ টি) সীমাবদ্ধ রাখা হচ্ছে যাতে হিজিবিজি বা ফেক কান্ট্রি না দেখায়
-                    if "instagram" in temp_services:
-                        inst_rids = temp_services["instagram"]["rids"]
-                        if len(inst_rids) > 10:
-                            # প্রথম ১০ টি সচল বা রিয়েল কান্ট্রি রেখে বাকিগুলো ট্রিম করা হচ্ছে
-                            trimmed_rids = dict(list(inst_rids.items())[:10])
-                            temp_services["instagram"]["rids"] = trimmed_rids
-                    # -----------------------------------------------------------------
+                    # --- ইন্সটাগ্রামের ফেক ফেসবুক রেঞ্জ কপি করার ও সর্বোচ্চ ১০ টি করার বিতর্কিত ট্রিম লজিকটি সম্পূর্ণ রিমুভ করা হয়েছে ---
+                    # এখন প্যানেল থেকে শুধুমাত্র ইনস্টাগ্রামের রিয়েল লাইভ রেঞ্জ আইডি এবং কান্ট্রিগুলোই নির্ভুলভাবে সিঙ্ক হবে।
                     
                     if temp_services:
                         config["SERVICES"] = temp_services
                         save_config(config)
             
-        except:
-            pass
+        except Exception as e:
+            print(f"Sync error: {e}")
         
         time.sleep(60)
 
