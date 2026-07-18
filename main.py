@@ -38,78 +38,81 @@ def save_users(users_set):
         pass
 
 def get_country_info_by_range(range_val):
-    """রেঞ্জ আইডি দেখে পতাকা ও দেশের নাম শনাক্ত করার ডায়নামিক ট্র্যাকার"""
+    """রেঞ্জ আইডি দেখে পতাকা ও দেশের নাম শনাক্ত করার ডায়নামিক ট্র্যাকার (স্ট্যাটিক ও নির্ভুল ম্যাপ)"""
     if not range_val:
         return "Global 🌐"
     
     clean_range = str(range_val).strip().upper()
     prefix_range = clean_range.replace("XXX", "")
     
-    # ১. প্রথমে বটের কনফিগার করা সার্ভিস থেকে চেক করবে
-    services = config.get("SERVICES", {})
-    for s_id, s_info in services.items():
-        rids = s_info.get("rids", {})
-        for country, rid_val in rids.items():
-            clean_rid = str(rid_val).strip().upper()
-            prefix_rid = clean_rid.replace("XXX", "")
+    # Prefix-to-Country static map
+    prefix_map = {
+        "236747": "Liberia (Lonestar) 🇱🇷",
+        "231747": "Liberia (Lonestar) 🇱🇷",
+        "23674": "Liberia 🇱🇷",
+        "23174": "Liberia 🇱🇷",
+        "22467": "Guinea 🇬🇳",
+        "22465": "Guinea 🇬🇳",
+        "2246": "Guinea 🇬🇳",
+        "224": "Guinea 🇬🇳",
+        "236": "Liberia 🇱🇷",
+        "231": "Liberia 🇱🇷",
+        "225": "Ivory Coast 🇨🇮",
+        "261": "Madagascar 🇲🇬",
+        "996": "Kyrgyzstan 🇰🇬",
+        "380": "Ukraine 🇺🇦",
+        "880": "Bangladesh 🇧🇩",
+        "234": "Nigeria 🇳🇬",
+        "232": "Sierra Leone 🇸🇱",
+        "228": "Togo 🇹🇬",
+        "351": "Portugal 🇵🇹",
+        "244": "Angola 🇦🇴",
+        "242": "Congo 🇨🇬",
+        "243": "DR Congo 🇨🇩",
+        "229": "Benin 🇧🇯",
+        "220": "Gambia 🇬🇲",
+        "233": "Ghana 🇬🇭",
+        "221": "Senegal 🇸🇳",
+        "254": "Kenya 🇰🇪",
+        "255": "Tanzania 🇹🇿",
+        "256": "Uganda 🇺🇬",
+        "263": "Zimbabwe 🇿🇼",
+        "260": "Zambia 🇿🇲",
+        "251": "Ethiopia 🇪🇹",
+        "212": "Morocco 🇲🇦",
+        "213": "Algeria 🇩🇿",
+        "216": "Tunisia 🇹🇳",
+        "218": "Libya 🇱🇾",
+        "20": "Egypt 🇪🇬",
+        "44": "United Kingdom 🇬🇧",
+        "1": "United States 🇺🇸",
+        "91": "India 🇮🇳",
+        "92": "Pakistan 🇵🇰",
+        "62": "Indonesia 🇮🇩",
+        "60": "Malaysia 🇲🇾",
+        "63": "Philippines 🇵🇭",
+        "84": "Vietnam 🇻🇳",
+        "7": "Russia/Kazakhstan 🇷🇺",
+    }
+    
+    for prefix, country in prefix_map.items():
+        if prefix_range.startswith(prefix):
+            return country
             
-            if prefix_range == prefix_rid or clean_range == clean_rid or clean_range.startswith(prefix_rid) or prefix_rid.startswith(prefix_range):
-                return country
-    
-    # ২. মিল না পাওয়া গেলে প্রিফিক্স অনুযায়ী কমন কান্ট্রি ম্যাপ করবে
-    if prefix_range.startswith("236747") or prefix_range.startswith("231747"):
-        return "Liberia (Lonestar) 🇱🇷"
-    elif prefix_range.startswith("224"):
-        return "Guinea 🇬🇳"
-    elif prefix_range.startswith("236") or prefix_range.startswith("231"):
-        return "Liberia 🇱🇷"
-    elif prefix_range.startswith("225"):
-        return "Ivory Coast 🇨🇮"
-    elif prefix_range.startswith("261"):
-        return "Madagascar 🇲🇬"
-    elif prefix_range.startswith("996"):
-        return "Kyrgyzstan 🇰🇬"
-    elif prefix_range.startswith("44"):
-        return "United Kingdom 🇬🇧"
-    elif prefix_range.startswith("1"):
-        return "United States 🇺🇸"
-    elif prefix_range.startswith("880"):
-        return "Bangladesh 🇧🇩"
-    elif prefix_range.startswith("91"):
-        return "India 🇮🇳"
-    elif prefix_range.startswith("92"):
-        return "Pakistan 🇵🇰"
-    elif prefix_range.startswith("7"):
-        return "Russia/Kazakhstan 🇷🇺"
-    elif prefix_range.startswith("380"):
-        return "Ukraine 🇺🇦"
-    elif prefix_range.startswith("62"):
-        return "Indonesia 🇮🇩"
-    elif prefix_range.startswith("60"):
-        return "Malaysia 🇲🇾"
-    elif prefix_range.startswith("63"):
-        return "Philippines 🇵🇭"
-    elif prefix_range.startswith("84"):
-        return "Vietnam 🇻🇳"
-    elif prefix_range.startswith("234"):
-        return "Nigeria 🇳🇬"
-    elif prefix_range.startswith("232"):
-        return "Sierra Leone 🇸🇱"
-    elif prefix_range.startswith("228"):
-        return "Togo 🇹🇬"
-    
-    # ৩. জেনেরিক ফলব্যাক যদি লিস্টে না পাওয়া যায়
+    # নিখুঁত মিল না পাওয়া গেলে প্রিফিক্সের দৈর্ঘ্য অনুযায়ী ফলব্যাক ট্র্যাকিং
     if len(prefix_range) >= 3:
-        p = prefix_range[:3]
-        if p == "236" or p == "231":
-            return "Liberia 🇱🇷"
-        elif p == "224":
-            return "Guinea 🇬🇳"
-        elif p == "225":
-            return "Ivory Coast 🇨🇮"
-        elif p == "261":
-            return "Madagascar 🇲🇬"
-        return f"Country (+{p}) 🌍"
+        p3 = prefix_range[:3]
+        if p3 in prefix_map: return prefix_map[p3]
+        p2 = prefix_range[:2]
+        if p2 in prefix_map: return prefix_map[p2]
+        p1 = prefix_range[:1]
+        if p1 in prefix_map: return prefix_map[p1]
+        return f"Country (+{p3}) 🌍"
+    elif len(prefix_range) >= 1:
+        p1 = prefix_range[:1]
+        if p1 in prefix_map: return prefix_map[p1]
+        return f"Country (+{prefix_range}) 🌍"
+        
     return "Global 🌐"
 
 def load_config():
@@ -946,7 +949,7 @@ def background_live_sms_monitor():
                     # ------------------------------------
 
                     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
+                    bot_title = config.get("BOT_NAME", "কোড এসেছে💋👇")
                     bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
                     dev_user = config.get("DEV_USERNAME", "Saku_143")
                     
