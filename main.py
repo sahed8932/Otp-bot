@@ -101,7 +101,7 @@ def get_country_info_by_range(range_val):
         "977": "Nepal 🇳🇵",
         "502": "Guatemala 🇬🇹",
         "972": "Israel 🇮🇱",
-        "962": "Jordan 🇯🇴",
+        "962": "Jordan 🇬🇹",
         "386": "Slovenia 🇸🇮",
         "998": "Uzbekistan 🇺🇿",
         "40": "Romania 🇷🇴",
@@ -367,7 +367,7 @@ def handle_text(message):
         bal_text = config.get("BALANCE_TEXT", "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।")
         bot.send_message(message.chat.id, bal_text, parse_mode="Markdown")
     elif text == "📉 Withdraw":
-        wd_text = config.get("WITHDRAW_TEXT", "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।")
+        wd_text = config.get("WITHDRAW_TEXT", "📉 ওটিপি সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।")
         bot.send_message(message.chat.id, wd_text, parse_mode="Markdown")
     elif text == "🌍 Available Countries":
         send_available_countries(message.chat.id)
@@ -403,19 +403,21 @@ def send_available_countries(chat_id):
 
 def show_admin_dashboard(chat_id):
     markup = types.InlineKeyboardMarkup()
-    markup.row(types.InlineKeyboardButton("➕ Add Custom App", callback_data="adm_addrid"),
-               types.InlineKeyboardButton("🗑 Delete Range ID", callback_data="adm_delrid"))
+    # রেঞ্জ আইডি অ্যাড এবং কাস্টম অ্যাপ অ্যাড সম্পূর্ণ আলাদা বাটন হিসেবে বিভক্ত করা হলো
+    markup.row(types.InlineKeyboardButton("➕ Add Range ID", callback_data="adm_addrid"),
+               types.InlineKeyboardButton("✨ Add Custom App", callback_data="adm_addcustom"))
+    markup.row(types.InlineKeyboardButton("🗑 Delete Range ID", callback_data="adm_delrid"))
     markup.row(types.InlineKeyboardButton("📢 Manage Channels/Groups", callback_data="adm_channels"))
     markup.row(types.InlineKeyboardButton("📢 Broadcast Message", callback_data="adm_broadcast"))
     markup.row(types.InlineKeyboardButton("✍️ Set Notice", callback_data="adm_setnotice"),
                types.InlineKeyboardButton("🤖 Set Bot Name", callback_data="adm_setname"))
     markup.row(types.InlineKeyboardButton("💰 Edit Balance Text", callback_data="adm_setbal"),
-               types.InlineKeyboardButton("📉 Edit Withdraw Text", callback_data="adm_setwd"))
+               types.InlineKeyboardButton("📉 Edit Withdraw Text", callback_data="adm_setwith"))
     markup.row(types.InlineKeyboardButton("🔗 Set Bot Username", callback_data="adm_setbotuser"),
                types.InlineKeyboardButton("👨‍💻 Set Dev Username", callback_data="adm_setdevuser"))
     markup.row(types.InlineKeyboardButton("🔑 Update API Key", callback_data="adm_setkey"))
     
-    bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
+    bot_title = config.get("BOT_NAME", "কোড এসেছে💋👇")
     bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
     dev_user = config.get("DEV_USERNAME", "Saku_143")
     
@@ -438,9 +440,15 @@ def handle_admin_callbacks(call):
     if data == "adm_addrid":
         markup = types.InlineKeyboardMarkup()
         for s_id, s_info in config["SERVICES"].items():
-            markup.add(types.InlineKeyboardButton(s_info["name"], callback_data=f"addapp_{s_id}"))
-        markup.add(types.InlineKeyboardButton("✨ নতুন অ্যাপ (Custom App) যোগ করুন", callback_data="addapp_custom"))
-        bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text="📌 **সার্ভিস যুক্তকরণ:**\nনতুন কাস্টম সার্ভিস বা অ্যাপ যোগ করতে নিচের বাটনে ক্লিক করুন:", reply_markup=markup, parse_mode="Markdown")
+            markup.add(types.InlineKeyboardButton(f"➕ {s_info['name']} - এ রেঞ্জ যোগ করুন", callback_data=f"addrid_target_{s_id}"))
+        markup.add(types.InlineKeyboardButton("⬅️ ব্যাক", callback_data="adm_back"))
+        bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, 
+                              text="📌 **রেঞ্জ আইডি যুক্তকরণ:**\nনিচের কোন অ্যাপে নতুন রেঞ্জ আইডি যোগ করতে চান সিলেক্ট করুন:", 
+                              reply_markup=markup, parse_mode="Markdown")
+        
+    elif data == "adm_addcustom":
+        msg = bot.send_message(chat_id, "✍️ নতুন কাস্টম অ্যাপের নাম লিখুন (যেমন: `telegram` বা `netflix`):")
+        bot.register_next_step_handler(msg, wizard_get_custom_app_name)
         
     elif data == "adm_delrid":
         markup = types.InlineKeyboardMarkup()
@@ -472,7 +480,7 @@ def handle_admin_callbacks(call):
     elif data == "adm_setbal":
         msg = bot.send_message(chat_id, "👉 নতুন Balance মেসেজটি লিখে পাঠান:")
         bot.register_next_step_handler(msg, save_balance_text)
-    elif data == "adm_setwd":
+    elif data == "adm_setwith":
         msg = bot.send_message(chat_id, "👉 নতুন Withdraw মেসেজটি লিখে পাঠান:")
         bot.register_next_step_handler(msg, save_withdraw_text)
     elif data == "adm_setbotuser":
@@ -515,17 +523,13 @@ def process_broadcast(message):
     bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, 
                           text=f"✅ ব্রডকাস্ট সম্পন্ন!\n\n• সফলভাবে পাঠানো হয়েছে: `{success}` জনের কাছে\n• ফেইল হয়েছে: `{failed}` জনের কাছে", parse_mode="Markdown")
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("addapp_"))
-def wizard_add_app(call):
+@bot.callback_query_handler(func=lambda call: call.data.startswith("addrid_target_"))
+def wizard_add_rid_target(call):
     chat_id = call.message.chat.id
-    app_target = call.data.split("_")[1]
-    if app_target == "custom":
-        msg = bot.send_message(chat_id, "✍️ নতুন অ্যাপের নাম লিখুন (যেমন: `telegram` বা `netflix`):")
-        bot.register_next_step_handler(msg, wizard_get_custom_app_name)
-    else:
-        admin_temp_data[chat_id] = {"app": app_target}
-        msg = bot.send_message(chat_id, f"🌍 আপনি **{app_target.upper()}** সিলেক্ট করেছেন।\n\nএখন দেশের কোড এবং রেঞ্জ আইডি (শেষে XXX সহ) এভাবে লিখে পাঠান:\n*উদাহরণ:* `US 22501XXX`")
-        bot.register_next_step_handler(msg, wizard_save_rid)
+    app_target = call.data.replace("addrid_target_", "")
+    admin_temp_data[chat_id] = {"app": app_target}
+    msg = bot.send_message(chat_id, f"🌍 আপনি **{app_target.upper()}** সিলেক্ট করেছেন।\n\nএখন দেশের কোড এবং রেঞ্জ আইডি (শেষে XXX সহ) এভাবে লিখে পাঠান:\n*উদাহরণ:* `US 22501XXX`")
+    bot.register_next_step_handler(msg, wizard_save_rid)
 
 def wizard_get_custom_app_name(message):
     chat_id = message.chat.id
@@ -541,7 +545,7 @@ def wizard_get_custom_app_name(message):
         config["SERVICES"][app_name] = {"name": f"✨ {app_name.capitalize()}", "rids": {}}
         save_config(config)
     
-    bot.send_message(chat_id, f"🎉 সফলভাবে কাস্টম সার্ভিস **{app_name.upper()}** যুক্ত হয়েছে!\n\nবট এখন থেকে ব্যাকগ্রাউন্ডে এই সার্ভিসের সচল রেঞ্জ ও নম্বরগুলো অটোমেটিক ট্র্যাক এবং ড্যাশবোর্ডে শো করবে। আপনাকে ম্যানুয়ালি কিছু করতে হবে না।")
+    bot.send_message(chat_id, f"🎉 সফলভাবে কাস্টম সার্ভিস **{app_name.upper()}** যুক্ত হয়েছে!\n\nবট এখন থেকে ব্যাকগ্রাউন্ডে এই সার্ভিসের সচল রেঞ্জ ও নম্বরগুলো অটোমেটিক ট্র্যাক এবং ড্যাশবোর্ডে শো করবে।")
     show_admin_dashboard(chat_id)
 
 def wizard_save_rid(message):
@@ -781,7 +785,7 @@ def check_and_send_otp_manual(chat_id, selected_app, country, num):
             
             if found_msg:
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
+                bot_title = config.get("BOT_NAME", "কোড এসেছে💋👇")
                 bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
                 dev_user = config.get("DEV_USERNAME", "Saku_143")
                 
@@ -854,7 +858,7 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
                 
                 if found_msg:
                     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    bot_title = config.get("BOT_NAME", "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ")
+                    bot_title = config.get("BOT_NAME", "কোড এসেছে💋👇")
                     bot_user = config.get("BOT_USERNAME", "SHS_SMSHUB_bot")
                     dev_user = config.get("DEV_USERNAME", "Saku_143")
                     
@@ -986,13 +990,13 @@ def background_live_sms_monitor():
                                 f"💡 এই রেঞ্জে দ্রুত নম্বর নিয়ে কাজ করুন, ওটিপি সাথে সাথে আসছে!"
                             )
                             
-                            # ১. গ্রুপ ও চ্যানেলে কোনো লিমিট ছাড়া পোস্ট হতে থাকবে
+                            # ১. গ্রুপ ও চ্যানেলে পোস্ট হতে থাকবে
                             for dest_id in config.get("OTP_DESTINATIONS", []):
                                 try:
                                     bot.send_message(int(dest_id), speed_alert, parse_mode="Markdown")
                                 except: pass
                                 
-                            # ২. ইউজারদের ইনবক্সে বিরক্তি এড়াতে সকল ইউজারদের কাছে প্রতি ১ ঘণ্টায় সর্বোচ্চ ১টি স্পিড অ্যালার্ট পাঠানো হবে (গ্লোবাল ১ ঘণ্টার লিমিট)
+                            # ২. ইউজারদের ইনবক্সে প্রতি ১ ঘণ্টায় সর্বোচ্চ ১টি স্পিড অ্যালার্ট পাঠানো হবে (গ্লোবাল ১ ঘণ্টার লিমিট)
                             if current_time_epoch - last_global_dm_broadcast_time > 3600:
                                 last_global_dm_broadcast_time = current_time_epoch
                                 for uid in list(all_users):
@@ -1110,6 +1114,22 @@ def background_services_sync():
                                 r_str = str(r).strip()
                                 country_name = get_country_info_by_range(r_str)
                                 temp_services[service_id]["rids"][country_name] = r_str
+                    
+                    # --- INSTAGRAM SPECIFIC LOGIC (ইউজারের চাহিদানুযায়ী মডিফিকেশন) ---
+                    # ১. ফেসবুকের সচল রেঞ্জগুলো ইনস্টাগ্রামে কপি করা হচ্ছে (যেহেতু মেটা রেঞ্জ একই এবং ওটিপি ফেসবুক রেঞ্জ দিয়েও আসে)
+                    if "facebook" in temp_services and "instagram" in temp_services:
+                        for country, r_str in temp_services["facebook"]["rids"].items():
+                            if country not in temp_services["instagram"]["rids"]:
+                                temp_services["instagram"]["rids"][country] = r_str
+                    
+                    # ২. ইনস্টাগ্রামের দেশের সংখ্যা ৪-৫ টি (সর্বোচ্চ ১০ টি) সীমাবদ্ধ রাখা হচ্ছে যাতে হিজিবিজি বা ফেক কান্ট্রি না দেখায়
+                    if "instagram" in temp_services:
+                        inst_rids = temp_services["instagram"]["rids"]
+                        if len(inst_rids) > 10:
+                            # প্রথম ১০ টি সচল বা রিয়েল কান্ট্রি রেখে বাকিগুলো ট্রিম করা হচ্ছে
+                            trimmed_rids = dict(list(inst_rids.items())[:10])
+                            temp_services["instagram"]["rids"] = trimmed_rids
+                    # -----------------------------------------------------------------
                     
                     if temp_services:
                         config["SERVICES"] = temp_services
