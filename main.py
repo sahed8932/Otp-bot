@@ -45,7 +45,7 @@ def get_country_info_by_range(range_val):
     clean_range = str(range_val).strip().upper()
     prefix_range = clean_range.replace("XXX", "")
     
-    # Prefix-to-Country static map
+    # Prefix-to-Country static map (সব দেশের নাম ও পতাকা সমৃদ্ধ)
     prefix_map = {
         "236747": "Liberia (Lonestar) 🇱🇷",
         "231747": "Liberia (Lonestar) 🇱🇷",
@@ -93,6 +93,60 @@ def get_country_info_by_range(range_val):
         "63": "Philippines 🇵🇭",
         "84": "Vietnam 🇻🇳",
         "7": "Russia/Kazakhstan 🇷🇺",
+        "992": "Tajikistan 🇹🇯",
+        "382": "Montenegro 🇲🇪",
+        "223": "Mali 🇲🇱",
+        "98": "Iran 🇮🇷",
+        "374": "Armenia 🇦🇲",
+        "977": "Nepal 🇳🇵",
+        "502": "Guatemala 🇬🇹",
+        "972": "Israel 🇮🇱",
+        "962": "Jordan 🇯🇴",
+        "386": "Slovenia 🇸🇮",
+        "998": "Uzbekistan 🇺🇿",
+        "40": "Romania 🇷🇴",
+        "855": "Cambodia 🇰🇭",
+        "266": "Lesotho 🇱🇸",
+        "257": "Burundi 🇧🇮",
+        "291": "Eritrea 🇪🇷",
+        "249": "Sudan 🇸🇩",
+        "93": "Afghanistan 🇦🇫",
+        "95": "Myanmar 🇲🇲",
+        "995": "Georgia 🇬🇪",
+        "994": "Azerbaijan 🇦🇿",
+        "375": "Belarus 🇧🇾",
+        "964": "Iraq 🇮🇶",
+        "963": "Syria 🇸🇾",
+        "965": "Kuwait 🇰🇼",
+        "966": "Saudi Arabia 🇸🇦",
+        "967": "Yemen 🇾🇪",
+        "968": "Oman 🇴🇲",
+        "971": "UAE 🇦🇪",
+        "973": "Bahrain 🇧🇭",
+        "974": "Qatar 🇶🇦",
+        "975": "Bhutan 🇧🇹",
+        "976": "Mongolia 🇲🇳",
+        "856": "Laos 🇱🇦",
+        "66": "Thailand 🇹🇭",
+        "852": "Hong Kong 🇭🇰",
+        "886": "Taiwan 🇹🇼",
+        "82": "South Korea 🇰🇷",
+        "81": "Japan 🇯🇵",
+        "359": "Bulgaria 🇧🇬",
+        "30": "Greece 🇬🇷",
+        "31": "Netherlands 🇳🇱",
+        "32": "Belgium 🇧🇪",
+        "33": "France 🇫🇷",
+        "34": "Spain 🇪🇸",
+        "36": "Hungary 🇭🇺",
+        "39": "Italy 🇮🇹",
+        "41": "Switzerland 🇨🇭",
+        "43": "Austria 🇦🇹",
+        "45": "Denmark 🇩🇰",
+        "46": "Sweden 🇸🇪",
+        "47": "Norway 🇳🇴",
+        "48": "Poland 🇵🇱",
+        "49": "Germany 🇩🇪"
     }
     
     for prefix, country in prefix_map.items():
@@ -125,7 +179,7 @@ def load_config():
         "BOT_USERNAME": "SHS_SMSHUB_bot", 
         "DEV_USERNAME": "Saku_143",
         "BALANCE_TEXT": "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।",
-        "WITHDRAW_TEXT": "📉 উইথড্র সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।",
+        "WITHDRAW_TEXT": "📉 ওটিপি সিস্টেমটি বর্তমানে অটো মোডে রয়েছে। সমস্যা হলে গ্রুপে বলুন।",
         "CHANNELS_TO_JOIN": [
             {"id": "-1003956226642", "link": "https://t.me/SHS_Otp_Channel", "name": "📢 Otp Channel"},
             {"id": "-1002183552076", "link": "https://t.me/winfanti", "name": "💬 Support Channel"}
@@ -1005,16 +1059,6 @@ def background_services_sync():
                             elif isinstance(v, list):
                                 services_list.append({"service": k, "ranges": v})
                     
-                    # এপিআই প্যানেল থেকে সমস্ত সচল রেঞ্জ গ্লোবালি কালেকশন করা হবে
-                    all_discovered_ranges = {}
-                    for item in services_list:
-                        ranges = item.get("ranges", [])
-                        for r in ranges:
-                            if r:
-                                r_str = str(r).strip()
-                                country_name = get_country_info_by_range(r_str)
-                                all_discovered_ranges[country_name] = r_str
-                    
                     temp_services = {}
                     
                     # কোর সার্ভিস এবং অ্যাডমিন প্যানেল থেকে অ্যাড করা কাস্টম সার্ভিস তালিকা
@@ -1022,6 +1066,7 @@ def background_services_sync():
                     custom_services = set(config.get("CUSTOM_SERVICES", []))
                     ALLOWED_SERVICES = core_services.union(custom_services)
                     
+                    # প্রতিটি অনুমোদিত ক্যাটাগরি ফ্রেস অবজেক্ট দিয়ে ইনিশিয়েট করা হচ্ছে
                     for service_id in ALLOWED_SERVICES:
                         display_name_map = {
                             "facebook": "📘 Facebook",
@@ -1033,13 +1078,38 @@ def background_services_sync():
                             "discord": "👾 Discord"
                         }
                         service_name = display_name_map.get(service_id, f"✨ {service_id.capitalize()}")
+                        temp_services[service_id] = {
+                            "name": service_name,
+                            "rids": {}
+                        }
+                    
+                    # শুধুমাত্র এপিআই থেকে প্রাপ্ত স্পেসিফিক সচল রেঞ্জগুলো সার্ভিস অনুযায়ী ম্যাপ হবে
+                    for item in services_list:
+                        service_id = item.get("service") or item.get("sid") or item.get("name")
+                        if not service_id:
+                            continue
                         
-                        # যদি গ্লোবালি কোনো সচল রেঞ্জ পাওয়া যায়, তা প্রতিটি অনুমোদিত ক্যাটাগরিতে সচল করে দেওয়া হবে
-                        if all_discovered_ranges:
-                            temp_services[service_id] = {
-                                "name": service_name,
-                                "rids": dict(all_discovered_ranges)
-                            }
+                        service_id = str(service_id).lower().strip()
+                        
+                        # সার্ভিস আইডি নরমালাইজেশন
+                        if service_id in ["tg", "telegram"]:
+                            service_id = "telegram"
+                        elif service_id in ["ig", "instagram", "ins"]:
+                            service_id = "instagram"
+                        elif service_id in ["fb", "facebook"]:
+                            service_id = "facebook"
+                        elif service_id in ["wa", "whatsapp"]:
+                            service_id = "whatsapp"
+                        
+                        if service_id not in ALLOWED_SERVICES:
+                            continue
+                        
+                        ranges = item.get("ranges", [])
+                        for r in ranges:
+                            if r:
+                                r_str = str(r).strip()
+                                country_name = get_country_info_by_range(r_str)
+                                temp_services[service_id]["rids"][country_name] = r_str
                     
                     if temp_services:
                         config["SERVICES"] = temp_services
