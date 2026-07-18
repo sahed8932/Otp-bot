@@ -17,7 +17,8 @@ USERS_FILE = "users.json"
 range_hits_tracker = collections.defaultdict(list)
 last_announced_range = {}
 seen_console_hits = set()
-dm_range_cooldowns = {} # ইনবক্স নোটিফিকেশনের রেঞ্জ-ভিত্তিক ১ ঘণ্টার লিমিট ট্র্যাকার
+dm_range_cooldowns = {} # গ্রুপ/চ্যানেলের অ্যালার্ট কুলডাউন
+last_global_dm_broadcast_time = 0 # ইনবক্স নোটিফিকেশনের গ্লোবাল ১ ঘণ্টার লিমিট ট্র্যাকার
 
 def load_users():
     if os.path.exists(USERS_FILE):
@@ -99,7 +100,16 @@ def get_country_info_by_range(range_val):
     
     # ৩. জেনেরিক ফলব্যাক যদি লিস্টে না পাওয়া যায়
     if len(prefix_range) >= 3:
-        return f"Country (+{prefix_range[:3]}) 🌍"
+        p = prefix_range[:3]
+        if p == "236" or p == "231":
+            return "Liberia 🇱🇷"
+        elif p == "224":
+            return "Guinea 🇬🇳"
+        elif p == "225":
+            return "Ivory Coast 🇨🇮"
+        elif p == "261":
+            return "Madagascar 🇲🇬"
+        return f"Country (+{p}) 🌍"
     return "Global 🌐"
 
 def load_config():
@@ -108,7 +118,7 @@ def load_config():
         "FASTX_API_KEY": "MCZJ7C79228",  
         "BASE_URL": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api", 
         "ADMIN_ID": 8262679678,
-        "BOT_NAME": "ᏕᎻᏕ ᏕᎷᏕ ᎻᏬᏰ", 
+        "BOT_NAME": "কোড এসেছে💋👇", 
         "BOT_USERNAME": "SHS_SMSHUB_bot", 
         "DEV_USERNAME": "Saku_143",
         "BALANCE_TEXT": "💰 আপনার ব্যালেন্স চেক করতে প্যানেল অ্যাডমিন বা সাপোর্টের সাথে যোগাযোগ করুন।",
@@ -722,7 +732,7 @@ def check_and_send_otp_manual(chat_id, selected_app, country, num):
                 isolated_code = code_match.group(0) if code_match else found_msg[:10]
                 
                 alert_text = (f"🤖 **{bot_title}**\n"
-                              f"🌐 **{country} {selected_app.upper()} RECEIVED!**\n\n"
+                              f"🌍 **{country} {selected_app.upper()} RECEIVED!**\n\n"
                               f"🕒 Time: `{current_time}`\n"
                               f"📱 Service: {selected_app.upper()}\n"
                               f"📞 Number: `{num}`\n"
@@ -795,7 +805,7 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
                     isolated_code = code_match.group(0) if code_match else found_msg[:10]
                     
                     alert_text = (f"🤖 **{bot_title}**\n"
-                                  f"🌐 **{country} {selected_app.upper()} RECEIVED!**\n\n"
+                                  f"🌍 **{country} {selected_app.upper()} RECEIVED!**\n\n"
                                   f"🕒 Time: `{current_time}`\n"
                                   f"📱 Service: {selected_app.upper()}\n"
                                   f"📞 Number: `{num}`\n"
@@ -833,9 +843,38 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
         except:
             pass
 
+def detect_service_from_message(msg_body, fallback_platform):
+    """SMS বডির টেক্সট দেখে রিয়েল-টাইম ক্যাটাগরি ও সার্ভিস ম্যাপ করার ডাইনামিক ফিল্টার"""
+    body_lower = str(msg_body).lower()
+    
+    if "instagram" in body_lower or "ig code" in body_lower:
+        return "instagram"
+    elif "facebook" in body_lower or "fb code" in body_lower or "fb-" in body_lower:
+        return "facebook"
+    elif "whatsapp" in body_lower or "wa code" in body_lower:
+        return "whatsapp"
+    elif "telegram" in body_lower or "tg code" in body_lower:
+        return "telegram"
+    elif "imo" in body_lower:
+        return "imo"
+    elif "discord" in body_lower:
+        return "discord"
+    
+    # নো-ম্যাচ ফলব্যাক প্ল্যাটফর্ম নরমালাইজার
+    plat_lower = str(fallback_platform).lower().strip()
+    if plat_lower in ["tg", "telegram"]:
+        return "telegram"
+    elif plat_lower in ["ig", "instagram", "ins"]:
+        return "instagram"
+    elif plat_lower in ["fb", "facebook"]:
+        return "facebook"
+    elif plat_lower in ["wa", "whatsapp"]:
+        return "whatsapp"
+    return plat_lower
+
 def background_live_sms_monitor():
     """কনসোল থেকে লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপ ও ইনবক্সে অ্যালার্ট দেয়"""
-    global seen_console_hits, range_hits_tracker, last_announced_range, dm_range_cooldowns
+    global seen_console_hits, range_hits_tracker, last_announced_range, dm_range_cooldowns, last_global_dm_broadcast_time
     while True:
         try:
             time.sleep(15)
@@ -849,20 +888,12 @@ def background_live_sms_monitor():
                 
                 for item in hits_list:
                     range_val = item.get("range", "Unknown")
-                    platform = item.get("sid") or item.get("service") or "Global"
+                    platform_raw = item.get("sid") or item.get("service") or "Global"
                     msg_body = item.get("message") or ""
                     time_val = item.get("time") or time.time()
                     
-                    # নরমালাইজেশন
-                    platform_lower = str(platform).lower().strip()
-                    if platform_lower in ["tg", "telegram"]:
-                        platform = "telegram"
-                    elif platform_lower in ["ig", "instagram", "ins"]:
-                        platform = "instagram"
-                    elif platform_lower in ["fb", "facebook"]:
-                        platform = "facebook"
-                    elif platform_lower in ["wa", "whatsapp"]:
-                        platform = "whatsapp"
+                    # SMS বডি ডাইনামিক ফিল্টার (প্যানেলের মিসক্যাটাগরি ট্র্যাকিং ফিক্স)
+                    platform = detect_service_from_message(msg_body, platform_raw)
                     
                     hit_id = f"{msg_body}_{time_val}"
                     if hit_id in seen_console_hits:
@@ -904,10 +935,9 @@ def background_live_sms_monitor():
                                     bot.send_message(int(dest_id), speed_alert, parse_mode="Markdown")
                                 except: pass
                                 
-                            # ২. ইউজারদের ইনবক্সে বিরক্তি এড়াতে প্রতি ১ ঘণ্টায় সর্বোচ্চ ১ বার নোটিফিকেশন পাঠানো হবে
-                            last_dm_time = dm_range_cooldowns.get(key, 0)
-                            if current_time_epoch - last_dm_time > 3600: # 1 hour = 3600 seconds
-                                dm_range_cooldowns[key] = current_time_epoch
+                            # ২. ইউজারদের ইনবক্সে বিরক্তি এড়াতে সকল ইউজারদের কাছে প্রতি ১ ঘণ্টায় সর্বোচ্চ ১টি স্পিড অ্যালার্ট পাঠানো হবে (গ্লোবাল ১ ঘণ্টার লিমিট)
+                            if current_time_epoch - last_global_dm_broadcast_time > 3600:
+                                last_global_dm_broadcast_time = current_time_epoch
                                 for uid in list(all_users):
                                     try:
                                         bot.send_message(int(uid), speed_alert, parse_mode="Markdown")
@@ -953,11 +983,6 @@ def background_services_sync():
     """রিয়েলটাইমে প্যানেলের অ্যাক্টিভ রেঞ্জ ও কান্ট্রি ডিটেক্ট করে বটের নির্দিষ্ট সচল সার্ভিস তালিকা আপডেট করার থ্রেড"""
     while True:
         try:
-            # কোর সচল সার্ভিস এবং অ্যাডমিন প্যানেল থেকে যোগ করা কাস্টম সার্ভিস একত্রিত করা
-            core_services = {"facebook", "whatsapp", "instagram", "imo", "telegram", "discord"}
-            custom_services = set(config.get("CUSTOM_SERVICES", []))
-            ALLOWED_SERVICES = core_services.union(custom_services)
-            
             base_url = str(config['BASE_URL']).strip().rstrip('/')
             url = f"{base_url}/liveaccess"
             response = requests.get(url, headers=get_api_headers(), timeout=15)
@@ -967,47 +992,34 @@ def background_services_sync():
                     data_obj = res.get("data", {})
                     services_data = data_obj.get("services", [])
                     
-                    temp_services = {}
                     services_list = []
-                    
                     if isinstance(services_data, list):
                         services_list = services_data
                     elif isinstance(services_data, dict):
                         for k, v in services_data.items():
                             if isinstance(v, dict):
-                                services_list.append({
-                                    "service": k,
-                                    "ranges": v.get("ranges", [])
-                                })
+                                services_list.append({"service": k, "ranges": v.get("ranges", [])})
                             elif isinstance(v, list):
-                                services_list.append({
-                                    "service": k,
-                                    "ranges": v
-                                })
+                                services_list.append({"service": k, "ranges": v})
                     
+                    # এপিআই প্যানেল থেকে সমস্ত সচল রেঞ্জ গ্লোবালি কালেকশন করা হবে
+                    all_discovered_ranges = {}
                     for item in services_list:
-                        service_id = item.get("service") or item.get("sid") or item.get("name")
-                        if not service_id:
-                            continue
-                        
-                        service_id = str(service_id).lower().strip()
-                        
-                        # সার্ভিস আইডি নরমালাইজেশন
-                        if service_id in ["tg", "telegram"]:
-                            service_id = "telegram"
-                        elif service_id in ["ig", "instagram", "ins"]:
-                            service_id = "instagram"
-                        elif service_id in ["fb", "facebook"]:
-                            service_id = "facebook"
-                        elif service_id in ["wa", "whatsapp"]:
-                            service_id = "whatsapp"
-                        
-                        # শুধুমাত্র অনুমোদিত সার্ভিসগুলো ফিল্টার হবে
-                        if service_id not in ALLOWED_SERVICES:
-                            continue
-                        
                         ranges = item.get("ranges", [])
-                        
+                        for r in ranges:
+                            if r:
+                                r_str = str(r).strip()
+                                country_name = get_country_info_by_range(r_str)
+                                all_discovered_ranges[country_name] = r_str
+                    
+                    temp_services = {}
+                    
+                    # কোর সার্ভিস এবং অ্যাডমিন প্যানেল থেকে অ্যাড করা কাস্টম সার্ভিস তালিকা
+                    core_services = {"facebook", "whatsapp", "instagram", "imo", "telegram", "discord"}
+                    custom_services = set(config.get("CUSTOM_SERVICES", []))
+                    ALLOWED_SERVICES = core_services.union(custom_services)
+                    
+                    for service_id in ALLOWED_SERVICES:
                         display_name_map = {
                             "facebook": "📘 Facebook",
                             "whatsapp": "💚 WhatsApp",
@@ -1019,21 +1031,14 @@ def background_services_sync():
                         }
                         service_name = display_name_map.get(service_id, f"✨ {service_id.capitalize()}")
                         
-                        if service_id not in temp_services:
+                        # যদি গ্লোবালি কোনো সচল রেঞ্জ পাওয়া যায়, তা প্রতিটি অনুমোদিত ক্যাটাগরিতে সচল করে দেওয়া হবে
+                        if all_discovered_ranges:
                             temp_services[service_id] = {
                                 "name": service_name,
-                                "rids": {}
+                                "rids": dict(all_discovered_ranges)
                             }
-                        
-                        for range_val in ranges:
-                            if not range_val:
-                                continue
-                            range_str = str(range_val).strip()
-                            country_name = get_country_info_by_range(range_str)
-                            temp_services[service_id]["rids"][country_name] = range_str
                     
                     if temp_services:
-                        # কাস্টম সার্ভিসগুলোর ডেটা ধরে রাখতে সিঙ্ক করা
                         config["SERVICES"] = temp_services
                         save_config(config)
             
