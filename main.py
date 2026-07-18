@@ -17,7 +17,7 @@ USERS_FILE = "users.json"
 range_hits_tracker = collections.defaultdict(list)
 last_announced_range = {}
 seen_console_hits = set()
-dm_speed_alert_timestamps = [] # ইনবক্স নোটিফিকেশনের দৈনিক লিমিট ট্র্যাকার
+dm_range_cooldowns = {} # ইনবক্স নোটিফিকেশনের রেঞ্জ-ভিত্তিক ১ ঘণ্টার লিমিট ট্র্যাকার
 
 def load_users():
     if os.path.exists(USERS_FILE):
@@ -125,14 +125,11 @@ def load_config():
             "-1004309875319"
         ],
         "NOTICE": "⚠️ সার্ভিসটি ফুল স্পিডে সচল রয়েছে। কোনো সমস্যা হলে গ্রুপে জানান।",
+        "CUSTOM_SERVICES": [],
         "SERVICES": {
             "facebook": {
                 "name": "📘 Facebook",
-                "rids": {
-                    "Guinea 🇬🇳": "22467XXX",
-                    "Liberia 🇱🇷": "236744XXX",
-                    "Liberia (Lonestar) 🇱🇷": "23674719129XXX"
-                }
+                "rids": {}
             },
             "whatsapp": {
                 "name": "💚 WhatsApp",
@@ -140,21 +137,19 @@ def load_config():
             },
             "instagram": {
                 "name": "📸 Instagram",
-                "rids": {
-                    "Guinea 🇬🇳": "22467XXX"
-                }
+                "rids": {}
             },
-            "tiktok": {
-                "name": "🎵 TikTok",
-                "rids": {
-                    "Liberia (Lonestar) 🇱🇷": "23674719129XXX"
-                }
+            "telegram": {
+                "name": "✈️ Telegram",
+                "rids": {}
             },
             "imo": {
                 "name": "📱 IMO",
-                "rids": {
-                    "Guinea 🇬🇳": "22465XXX"
-                }
+                "rids": {}
+            },
+            "discord": {
+                "name": "👾 Discord",
+                "rids": {}
             }
         }
     }
@@ -253,10 +248,12 @@ def send_services_menu(chat_id, message_id=None):
     services = config.get("SERVICES", {})
     row = []
     for s_id, s_info in services.items():
-        row.append(types.InlineKeyboardButton(s_info["name"], callback_data=f"app_{s_id}"))
-        if len(row) == 2:
-            markup.row(*row)
-            row = []
+        # সচল রেঞ্জ থাকলে ড্যাশবোর্ডে দেখাবে, না থাকলে দেখাবে না
+        if s_info.get("rids"):
+            row.append(types.InlineKeyboardButton(s_info["name"], callback_data=f"app_{s_id}"))
+            if len(row) == 2:
+                markup.row(*row)
+                row = []
     if row: markup.row(*row)
     markup.add(types.InlineKeyboardButton("⬅️ Back to Main", callback_data="back_main"))
     
@@ -332,13 +329,14 @@ def fetch_live_traffic(chat_id):
 def send_available_countries(chat_id):
     msg = "🌍 **বর্তমান উপলব্ধ দেশসমূহ ও রেঞ্জ আইডি:**\n\n"
     for s_id, s_info in config["SERVICES"].items():
-        rids_str = ", ".join([f"{c}: `{r}`" for c, r in s_info["rids"].items()])
-        msg += f"{s_info['name']} ➔ {rids_str}\n"
+        if s_info.get("rids"):
+            rids_str = ", ".join([f"{c}: `{r}`" for c, r in s_info["rids"].items()])
+            msg += f"{s_info['name']} ➔ {rids_str}\n"
     bot.send_message(chat_id, msg, parse_mode="Markdown")
 
 def show_admin_dashboard(chat_id):
     markup = types.InlineKeyboardMarkup()
-    markup.row(types.InlineKeyboardButton("➕ Add Range ID", callback_data="adm_addrid"),
+    markup.row(types.InlineKeyboardButton("➕ Add Custom App", callback_data="adm_addrid"),
                types.InlineKeyboardButton("🗑 Delete Range ID", callback_data="adm_delrid"))
     markup.row(types.InlineKeyboardButton("📢 Manage Channels/Groups", callback_data="adm_channels"))
     markup.row(types.InlineKeyboardButton("📢 Broadcast Message", callback_data="adm_broadcast"))
@@ -375,7 +373,7 @@ def handle_admin_callbacks(call):
         for s_id, s_info in config["SERVICES"].items():
             markup.add(types.InlineKeyboardButton(s_info["name"], callback_data=f"addapp_{s_id}"))
         markup.add(types.InlineKeyboardButton("✨ নতুন অ্যাপ (Custom App) যোগ করুন", callback_data="addapp_custom"))
-        bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text="📌 **রেঞ্জ আইডি যুক্তকরণ:**\nপ্রথমে কোন অ্যাপের জন্য রেঞ্জ যোগ করবেন তা সিলেক্ট করুন:", reply_markup=markup, parse_mode="Markdown")
+        bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text="📌 **সার্ভিস যুক্তকরণ:**\nনতুন কাস্টম সার্ভিস বা অ্যাপ যোগ করতে নিচের বাটনে ক্লিক করুন:", reply_markup=markup, parse_mode="Markdown")
         
     elif data == "adm_delrid":
         markup = types.InlineKeyboardMarkup()
@@ -466,11 +464,18 @@ def wizard_get_custom_app_name(message):
     chat_id = message.chat.id
     app_name = message.text.strip().lower()
     admin_temp_data[chat_id] = {"app": app_name}
+    
+    if "CUSTOM_SERVICES" not in config:
+        config["CUSTOM_SERVICES"] = []
+    if app_name not in config["CUSTOM_SERVICES"]:
+        config["CUSTOM_SERVICES"].append(app_name)
+        
     if app_name not in config["SERVICES"]:
         config["SERVICES"][app_name] = {"name": f"✨ {app_name.capitalize()}", "rids": {}}
         save_config(config)
-    msg = bot.send_message(chat_id, f"✅ নতুন অ্যাপ **{app_name}** যুক্ত হয়েছে।\n\nএখন দেশের কোড এবং রেঞ্জ আইডি (শেষে XXX সহ) এভাবে লিখে পাঠান:\n*উদাহরণ:* `US 22501XXX`")
-    bot.register_next_step_handler(msg, wizard_save_rid)
+    
+    bot.send_message(chat_id, f"🎉 সফলভাবে কাস্টম সার্ভিস **{app_name.upper()}** যুক্ত হয়েছে!\n\nবট এখন থেকে ব্যাকগ্রাউন্ডে এই সার্ভিসের সচল রেঞ্জ ও নম্বরগুলো অটোমেটিক ট্র্যাক এবং ড্যাশবোর্ডে শো করবে। আপনাকে ম্যানুয়ালি কিছু করতে হবে না।")
+    show_admin_dashboard(chat_id)
 
 def wizard_save_rid(message):
     chat_id = message.chat.id
@@ -717,7 +722,7 @@ def check_and_send_otp_manual(chat_id, selected_app, country, num):
                 isolated_code = code_match.group(0) if code_match else found_msg[:10]
                 
                 alert_text = (f"🤖 **{bot_title}**\n"
-                              f"🇲🇬 **{country} {selected_app.upper()} RECEIVED!**\n\n"
+                              f"🌐 **{country} {selected_app.upper()} RECEIVED!**\n\n"
                               f"🕒 Time: `{current_time}`\n"
                               f"📱 Service: {selected_app.upper()}\n"
                               f"📞 Number: `{num}`\n"
@@ -790,7 +795,7 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
                     isolated_code = code_match.group(0) if code_match else found_msg[:10]
                     
                     alert_text = (f"🤖 **{bot_title}**\n"
-                                  f"🇲🇬 **{country} {selected_app.upper()} RECEIVED!**\n\n"
+                                  f"🌐 **{country} {selected_app.upper()} RECEIVED!**\n\n"
                                   f"🕒 Time: `{current_time}`\n"
                                   f"📱 Service: {selected_app.upper()}\n"
                                   f"📞 Number: `{num}`\n"
@@ -830,7 +835,7 @@ def background_user_otp_watcher(chat_id, message_id, selected_app, country, num)
 
 def background_live_sms_monitor():
     """কনসোল থেকে লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপ ও ইনবক্সে অ্যালার্ট দেয়"""
-    global seen_console_hits, range_hits_tracker, last_announced_range, dm_speed_alert_timestamps
+    global seen_console_hits, range_hits_tracker, last_announced_range, dm_range_cooldowns
     while True:
         try:
             time.sleep(15)
@@ -844,9 +849,20 @@ def background_live_sms_monitor():
                 
                 for item in hits_list:
                     range_val = item.get("range", "Unknown")
-                    platform = item.get("sid", "Global")
+                    platform = item.get("sid") or item.get("service") or "Global"
                     msg_body = item.get("message") or ""
                     time_val = item.get("time") or time.time()
+                    
+                    # নরমালাইজেশন
+                    platform_lower = str(platform).lower().strip()
+                    if platform_lower in ["tg", "telegram"]:
+                        platform = "telegram"
+                    elif platform_lower in ["ig", "instagram", "ins"]:
+                        platform = "instagram"
+                    elif platform_lower in ["fb", "facebook"]:
+                        platform = "facebook"
+                    elif platform_lower in ["wa", "whatsapp"]:
+                        platform = "whatsapp"
                     
                     hit_id = f"{msg_body}_{time_val}"
                     if hit_id in seen_console_hits:
@@ -869,7 +885,7 @@ def background_live_sms_monitor():
                     # ৩ মিনিটে ৩ বা তার বেশি হিট আসলে স্পিড নোটিফিকেশন জেনারেট করবে
                     if len(range_hits_tracker[key]) >= 3:
                         last_announce = last_announced_range.get(key, 0)
-                        # কুলডাউন ১৫ মিনিট (অ্যালার্টের পুনরাবৃত্তি কমাতে)
+                        # কুলডাউন ১৫ মিনিট (চ্যানেল/গ্রুপ অ্যালার্টের পুনরাবৃত্তি কমাতে)
                         if current_time_epoch - last_announce > 900:
                             last_announced_range[key] = current_time_epoch
                             
@@ -882,22 +898,20 @@ def background_live_sms_monitor():
                                 f"💡 এই রেঞ্জে দ্রুত নম্বর নিয়ে কাজ করুন, ওটিপি সাথে সাথে আসছে!"
                             )
                             
-                            # ১. গ্রুপ ও চ্যানেলে যেভাবে ইচ্ছে সেভাবে লিমিট ছাড়া রিয়েল-টাইমে পোস্ট হতে থাকবে
+                            # ১. গ্রুপ ও চ্যানেলে কোনো লিমিট ছাড়া পোস্ট হতে থাকবে
                             for dest_id in config.get("OTP_DESTINATIONS", []):
                                 try:
                                     bot.send_message(int(dest_id), speed_alert, parse_mode="Markdown")
                                 except: pass
                                 
-                            # ২. ইউজার বিরক্ত হওয়া রোধে বটে/ইনবক্সে সারাদিনে সর্বোচ্চ ৪ বার নোটিফিকেশন যাবে (২৪ ঘণ্টার লিমিট)
-                            now = time.time()
-                            dm_speed_alert_timestamps = [t for t in dm_speed_alert_timestamps if now - t < 86400]
-                            
-                            if len(dm_speed_alert_timestamps) < 4:
-                                dm_speed_alert_timestamps.append(now)
+                            # ২. ইউজারদের ইনবক্সে বিরক্তি এড়াতে প্রতি ১ ঘণ্টায় সর্বোচ্চ ১ বার নোটিফিকেশন পাঠানো হবে
+                            last_dm_time = dm_range_cooldowns.get(key, 0)
+                            if current_time_epoch - last_dm_time > 3600: # 1 hour = 3600 seconds
+                                dm_range_cooldowns[key] = current_time_epoch
                                 for uid in list(all_users):
                                     try:
                                         bot.send_message(int(uid), speed_alert, parse_mode="Markdown")
-                                        time.sleep(0.05)
+                                        time.sleep(0.05) # anti-flood
                                     except: pass
                     # ------------------------------------
 
@@ -937,11 +951,13 @@ def background_live_sms_monitor():
 
 def background_services_sync():
     """রিয়েলটাইমে প্যানেলের অ্যাক্টিভ রেঞ্জ ও কান্ট্রি ডিটেক্ট করে বটের নির্দিষ্ট সচল সার্ভিস তালিকা আপডেট করার থ্রেড"""
-    # শুধুমাত্র এই ৬টি সার্ভিসকে অনুমোদন দেওয়া হচ্ছে
-    ALLOWED_SERVICES = {"facebook", "tiktok", "imo", "instagram", "whatsapp", "discord"}
-    
     while True:
         try:
+            # কোর সচল সার্ভিস এবং অ্যাডমিন প্যানেল থেকে যোগ করা কাস্টম সার্ভিস একত্রিত করা
+            core_services = {"facebook", "whatsapp", "instagram", "imo", "telegram", "discord"}
+            custom_services = set(config.get("CUSTOM_SERVICES", []))
+            ALLOWED_SERVICES = core_services.union(custom_services)
+            
             base_url = str(config['BASE_URL']).strip().rstrip('/')
             url = f"{base_url}/liveaccess"
             response = requests.get(url, headers=get_api_headers(), timeout=15)
@@ -976,7 +992,17 @@ def background_services_sync():
                         
                         service_id = str(service_id).lower().strip()
                         
-                        # শুধুমাত্র অনুমোদিত ৬টি সার্ভিস এখানে ফিল্টার হবে
+                        # সার্ভিস আইডি নরমালাইজেশন
+                        if service_id in ["tg", "telegram"]:
+                            service_id = "telegram"
+                        elif service_id in ["ig", "instagram", "ins"]:
+                            service_id = "instagram"
+                        elif service_id in ["fb", "facebook"]:
+                            service_id = "facebook"
+                        elif service_id in ["wa", "whatsapp"]:
+                            service_id = "whatsapp"
+                        
+                        # শুধুমাত্র অনুমোদিত সার্ভিসগুলো ফিল্টার হবে
                         if service_id not in ALLOWED_SERVICES:
                             continue
                         
@@ -988,6 +1014,7 @@ def background_services_sync():
                             "instagram": "📸 Instagram",
                             "tiktok": "🎵 TikTok",
                             "imo": "📱 IMO",
+                            "telegram": "✈️ Telegram",
                             "discord": "👾 Discord"
                         }
                         service_name = display_name_map.get(service_id, f"✨ {service_id.capitalize()}")
@@ -1006,6 +1033,7 @@ def background_services_sync():
                             temp_services[service_id]["rids"][country_name] = range_str
                     
                     if temp_services:
+                        # কাস্টম সার্ভিসগুলোর ডেটা ধরে রাখতে সিঙ্ক করা
                         config["SERVICES"] = temp_services
                         save_config(config)
             
