@@ -252,8 +252,11 @@ def save_config(config_data):
         json.dump(config_data, f, indent=4)
 
 config = load_config()
+
+# সংশোধন: Middleware সক্রিয় করার অপশনটি অবশ্যই TeleBot অবজেক্ট তৈরি করার পূর্বে থাকতে হবে
+apihelper.ENABLE_MIDDLEWARE = True 
 bot = telebot.TeleBot(config["BOT_TOKEN"])
-apihelper.ENABLE_MIDDLEWARE = True # মিডলওয়্যার সক্রিয় করা হলো
+
 app = Flask('')
 admin_temp_data = {}
 all_users = load_users()
@@ -1138,9 +1141,6 @@ def background_services_sync():
                                 r_str = str(r).strip()
                                 country_name = get_country_info_by_range(r_str)
                                 temp_services[service_id]["rids"][country_name] = r_str
-                    
-                    # --- ইন্সটাগ্রামের ফেক ফেসবুক রেঞ্জ কপি করার ও সর্বোচ্চ ১০ টি করার বিতর্কিত ট্রিম লজিকটি সম্পূর্ণ রিমুভ করা হয়েছে ---
-                    # এখন প্যানেল থেকে শুধুমাত্র ইনস্টাগ্রামের রিয়েল লাইভ রেঞ্জ আইডি এবং কান্ট্রিগুলোই নির্ভুলভাবে সিঙ্ক হবে।
                     
                     if temp_services:
                         config["SERVICES"] = temp_services
