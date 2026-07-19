@@ -320,6 +320,17 @@ def format_rid(rid):
         return rid_str[:-3]
     return rid_str
 
+def get_country_activity_score(platform, rid_val):
+    """রেঞ্জ আইডি এবং নির্দিষ্ট সার্ভারের সাম্প্রতিক গতি পরিমাপ করার স্কোর ট্র্যাকার"""
+    clean_rid = format_rid(rid_val)
+    score = 0
+    for k, times in range_hits_tracker.items():
+        r_val, plat = k
+        if str(plat).lower() == str(platform).lower():
+            if format_rid(r_val) == clean_rid:
+                score += len(times)
+    return score
+
 def get_otp_group_link():
     for grp in config.get("GROUPS_TO_JOIN", []):
         if "OTP" in grp.get("name", "") or "Group" in grp.get("name", "") or "+" in grp.get("link", ""):
@@ -538,7 +549,7 @@ def process_broadcast(message):
         bot.send_message(chat_id, "❌ **ব্রডকাস্ট ব্যর্থ!**\n\nবটের ডাটাবেজে কোনো সচল সাধারণ ইউজার খুঁজে পাওয়া যায়নি (শুধুমাত্র অ্যাডমিন আইডি সংরক্ষিত রয়েছে)। নতুন কোনো ইউজার বট স্টার্ট করলে বা বাটনে প্রেস করলে তাদের আইডি ডাটাবেজে যুক্ত হয়ে যাবে।", parse_mode="Markdown")
         return
         
-    status_msg = bot.send_message(chat_id, "🚀 ব্রডকাস্ট শুরু হয়েছে, দয়া করে অপেক্ষা করুন...")
+    status_msg = bot.send_message(chat_id, "🚀 ব্রডকাস্ট শুরু হয়েছে, دয়া করে অপেক্ষা করুন...")
     
     for uid in target_users:
         try:
@@ -729,9 +740,19 @@ def show_countries(call):
     if selected_app not in services: return
     markup = types.InlineKeyboardMarkup()
     rids = services[selected_app]["rids"]
+    
+    # স্পিড অনুযায়ী বাটন সাজানো (অ্যাক্টিভিটি বেশি থাকলে বাটন সবার উপরে চলে আসবে)
+    sorted_countries = sorted(
+        rids.keys(),
+        key=lambda country: (get_country_activity_score(selected_app, rids[country]), country),
+        reverse=True
+    )
+    
     row = []
-    for country in rids.keys():
-        row.append(types.InlineKeyboardButton(f"🌍 {country}", callback_data=f"c_{country}_{selected_app}"))
+    for country in sorted_countries:
+        score = get_country_activity_score(selected_app, rids[country])
+        badge = "🔥 " if score > 0 else "🌍 "
+        row.append(types.InlineKeyboardButton(f"{badge}{country}", callback_data=f"c_{country}_{selected_app}"))
         if len(row) == 2:
             markup.row(*row)
             row = []
@@ -975,7 +996,7 @@ def detect_service_from_message(msg_body, fallback_platform):
     return plat_lower
 
 def background_live_sms_monitor():
-    """কনসোল থেকে লাইভ ওটিপিগুলো ফেচ করে এবং充-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপ ও ইনবক্সে অ্যালার্ট দেয়"""
+    """কনসোল থেকে লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপ ও ইনবক্সে অ্যালার্ট দেয়"""
     global seen_console_hits, range_hits_tracker, last_announced_range, dm_range_cooldowns, last_global_dm_broadcast_time
     while True:
         try:
@@ -996,6 +1017,15 @@ def background_live_sms_monitor():
                     
                     # SMS বডি ডাইনামিক ফিল্টার (প্যানেলের মিসক্যাটাগরি ট্র্যাকিং ফিক্স)
                     platform = detect_service_from_message(msg_body, platform_raw)
+                    
+                    # ডাইনামিক রেঞ্জ হার্ভেস্টিং লজিক: 
+                    # যদি লাইভ ওটিপি মেসেজের ভেতরের সার্ভিস (যেমন instagram বা অন্য কিছু) ডিটেক্ট হয়, 
+                    # তবে সেই রেঞ্জটিকে সচল রেঞ্জ হিসেবে ঐ সার্ভিসের তালিকায় যুক্ত করা হবে।
+                    if range_val and range_val != "Unknown" and platform in config["SERVICES"]:
+                        country_name = get_country_info_by_range(range_val)
+                        if country_name not in config["SERVICES"][platform]["rids"] or config["SERVICES"][platform]["rids"][country_name] != str(range_val):
+                            config["SERVICES"][platform]["rids"][country_name] = str(range_val)
+                            save_config(config)
                     
                     hit_id = f"{msg_body}_{time_val}"
                     if hit_id in seen_console_hits:
@@ -1152,13 +1182,18 @@ def background_services_sync():
                                 country_name = get_country_info_by_range(r_str)
                                 temp_services[service_id]["rids"][country_name] = r_str
                     
-                    # সংশোধন: যদি প্যানেলের এপিআই থেকে সরাসরি ইন্সটাগ্রামের কোনো রেঞ্জ না পাওয়া যায়, 
-                    # তবে ফেসবুকের লাইভ রেঞ্জগুলো ইন্সটাগ্রামে ফলব্যাক হিসেবে কপি করা হবে।
-                    if "instagram" in temp_services and "facebook" in temp_services:
-                        if not temp_services["instagram"]["rids"] and temp_services["facebook"]["rids"]:
-                            temp_services["instagram"]["rids"] = temp_services["facebook"]["rids"].copy()
+                    # নোট: ফেসবুকের রেঞ্জ সরাসরি ইনস্টাগ্রামে কপি করার অপশনটি ইউজারের অনুরোধ অনুযায়ী বাদ দেওয়া হয়েছে।
+                    # এখন রিয়েল-টাইম কনসোল ট্র্যাকার থেকে ইনস্টাগ্রামের কার্যকারী রেঞ্জগুলো স্বয়ংক্রিয়ভাবে ডিটেক্ট হবে।
                     
                     if temp_services:
+                        # পূর্বের ডাইনামিকালি সংগৃহীত রিয়েল-টাইম রেঞ্জগুলো সিঙ্ক করার সময় ধরে রাখার চেষ্টা
+                        for s_id in temp_services:
+                            if s_id in config.get("SERVICES", {}):
+                                # এক্সিস্টিং রিয়েল-টাইম রেঞ্জগুলো প্রি-সেভড থাকলে তা বজায় রাখা হবে
+                                for c_name, r_val in config["SERVICES"][s_id].get("rids", {}).items():
+                                    if c_name not in temp_services[s_id]["rids"]:
+                                        temp_services[s_id]["rids"][c_name] = r_val
+                        
                         config["SERVICES"] = temp_services
                         save_config(config)
             
