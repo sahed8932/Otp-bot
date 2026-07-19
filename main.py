@@ -31,7 +31,9 @@ def load_users():
                 users = set()
                 for uid in data:
                     try:
-                        users.add(int(uid))
+                        val = int(uid)
+                        if val > 0:  # শুধুমাত্র পজিটিভ ইউজার আইডি লোড করবে
+                            users.add(val)
                     except (ValueError, TypeError):
                         pass
                 return users
@@ -42,8 +44,10 @@ def load_users():
 
 def save_users(users_set):
     try:
+        # সেভ করার সময়ও নিশ্চিত করা হচ্ছে যেন কোনো গ্রুপ আইডি বা নেগেটিভ আইডি না থাকে
+        clean_list = [int(uid) for uid in users_set if int(uid) > 0]
         with open(USERS_FILE, "w") as f:
-            json.dump(list(users_set), f, indent=4)
+            json.dump(clean_list, f, indent=4)
     except Exception as e:
         print(f"Error saving users: {e}")
 
@@ -269,7 +273,10 @@ all_users = load_users()
 @bot.middleware_handler(update_types=['message', 'callback_query'])
 def auto_track_user(bot_instance, package):
     try:
-        if hasattr(package, 'chat') and package.chat:
+        # বাটন ক্লিক বা মেসেজ দেওয়া মূল ইউজারকে (পজিটিভ আইডি) ট্র্যাক করা হচ্ছে
+        if hasattr(package, 'from_user') and package.from_user:
+            track_user(package.from_user.id)
+        elif hasattr(package, 'chat') and package.chat:
             track_user(package.chat.id)
         elif hasattr(package, 'message') and package.message and package.message.chat:
             track_user(package.message.chat.id)
@@ -288,9 +295,10 @@ def track_user(user_id):
     global all_users
     try:
         u_id = int(user_id)
-        if u_id not in all_users:
-            all_users.add(u_id)
-            save_users(all_users)
+        if u_id > 0:  # নেগেটিভ আইডি (যেমন গ্রুপ বা চ্যানেল আইডি) বাদ দেওয়া হচ্ছে
+            if u_id not in all_users:
+                all_users.add(u_id)
+                save_users(all_users)
     except:
         pass
 
@@ -374,7 +382,7 @@ def send_services_menu(chat_id, message_id=None):
     else:
         bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start'], chat_types=['private'])
 def start_bot(message):
     track_user(message.chat.id)
     if is_subscribed_all(message.chat.id):
@@ -388,7 +396,7 @@ def start_bot(message):
         markup.row(types.InlineKeyboardButton("✅ Joined (Check)", callback_data="check_membership"))
         bot.send_message(message.chat.id, "⚠️ সার্ভিসটি ব্যবহার করতে নিচের সমস্ত চ্যানেল এবং গ্রুপগুলোতে অবশ্যই জয়েন করুন, এরপর 'Joined' বাটনে ক্লিক করুন।", reply_markup=markup)
 
-@bot.message_handler(func=lambda m: True)
+@bot.message_handler(func=lambda m: True, chat_types=['private'])
 def handle_text(message):
     track_user(message.chat.id)
     if not is_subscribed_all(message.chat.id):
@@ -549,7 +557,7 @@ def process_broadcast(message):
         bot.send_message(chat_id, "❌ **ব্রডকাস্ট ব্যর্থ!**\n\nবটের ডাটাবেজে কোনো সচল সাধারণ ইউজার খুঁজে পাওয়া যায়নি (শুধুমাত্র অ্যাডমিন আইডি সংরক্ষিত রয়েছে)। নতুন কোনো ইউজার বট স্টার্ট করলে বা বাটনে প্রেস করলে তাদের আইডি ডাটাবেজে যুক্ত হয়ে যাবে।", parse_mode="Markdown")
         return
         
-    status_msg = bot.send_message(chat_id, "🚀 ব্রডকাস্ট শুরু হয়েছে, دয়া করে অপেক্ষা করুন...")
+    status_msg = bot.send_message(chat_id, "🚀 ব্রডকাস্ট শুরু হয়েছে, দয়া করে অপেক্ষা করুন...")
     
     for uid in target_users:
         try:
@@ -1181,9 +1189,6 @@ def background_services_sync():
                                 r_str = str(r).strip()
                                 country_name = get_country_info_by_range(r_str)
                                 temp_services[service_id]["rids"][country_name] = r_str
-                    
-                    # নোট: ফেসবুকের রেঞ্জ সরাসরি ইনস্টাগ্রামে কপি করার অপশনটি ইউজারের অনুরোধ অনুযায়ী বাদ দেওয়া হয়েছে।
-                    # এখন রিয়েল-টাইম কনসোল ট্র্যাকার থেকে ইনস্টাগ্রামের কার্যকারী রেঞ্জগুলো স্বয়ংক্রিয়ভাবে ডিটেক্ট হবে।
                     
                     if temp_services:
                         # পূর্বের ডাইনামিকালি সংগৃহীত রিয়েল-টাইম রেঞ্জগুলো সিঙ্ক করার সময় ধরে রাখার চেষ্টা
