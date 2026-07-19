@@ -229,6 +229,10 @@ def load_config():
             "discord": {
                 "name": "👾 Discord",
                 "rids": {}
+            },
+            "tiktok": {
+                "name": "🎵 TikTok",
+                "rids": {}
             }
         }
     }
@@ -253,7 +257,7 @@ def save_config(config_data):
 
 config = load_config()
 
-# সংশোধন: Middleware সক্রিয় করার অপশনটি অবশ্যই TeleBot অবজেক্ট তৈরি করার পূর্বে থাকতে হবে
+# Middleware সক্রিয় করার অপশনটি অবশ্যই TeleBot অবজেক্ট তৈরি করার পূর্বে থাকতে হবে
 apihelper.ENABLE_MIDDLEWARE = True 
 bot = telebot.TeleBot(config["BOT_TOKEN"])
 
@@ -953,6 +957,8 @@ def detect_service_from_message(msg_body, fallback_platform):
         return "imo"
     elif "discord" in body_lower:
         return "discord"
+    elif "tiktok" in body_lower or "tt code" in body_lower:
+        return "tiktok"
     
     # নো-ম্যাচ ফলব্যাক প্ল্যাটফর্ম নরমালাইজার
     plat_lower = str(fallback_platform).lower().strip()
@@ -964,10 +970,12 @@ def detect_service_from_message(msg_body, fallback_platform):
         return "facebook"
     elif plat_lower in ["wa", "whatsapp"]:
         return "whatsapp"
+    elif plat_lower in ["tt", "tiktok"]:
+        return "tiktok"
     return plat_lower
 
 def background_live_sms_monitor():
-    """কনসোল থেকে লাইভ ওটিপিগুলো ফেচ করে এবং হাই-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপ ও ইনবক্সে অ্যালার্ট দেয়"""
+    """কনসোল থেকে লাইভ ওটিপিগুলো ফেচ করে এবং充-স্পিড রেঞ্জ ডিটেক্ট করে গ্রুপ ও ইনবক্সে অ্যালার্ট দেয়"""
     global seen_console_hits, range_hits_tracker, last_announced_range, dm_range_cooldowns, last_global_dm_broadcast_time
     while True:
         try:
@@ -1096,7 +1104,7 @@ def background_services_sync():
                     temp_services = {}
                     
                     # কোর সার্ভিস এবং কাস্টম সার্ভিস তালিকা
-                    core_services = {"facebook", "whatsapp", "instagram", "imo", "telegram", "discord"}
+                    core_services = {"facebook", "whatsapp", "instagram", "imo", "telegram", "discord", "tiktok"}
                     custom_services = set(config.get("CUSTOM_SERVICES", []))
                     ALLOWED_SERVICES = core_services.union(custom_services)
                     
@@ -1131,6 +1139,8 @@ def background_services_sync():
                             service_id = "facebook"
                         elif service_id in ["wa", "whatsapp"]:
                             service_id = "whatsapp"
+                        elif service_id in ["tt", "tiktok"]:
+                            service_id = "tiktok"
                         
                         if service_id not in ALLOWED_SERVICES:
                             continue
@@ -1141,6 +1151,12 @@ def background_services_sync():
                                 r_str = str(r).strip()
                                 country_name = get_country_info_by_range(r_str)
                                 temp_services[service_id]["rids"][country_name] = r_str
+                    
+                    # সংশোধন: যদি প্যানেলের এপিআই থেকে সরাসরি ইন্সটাগ্রামের কোনো রেঞ্জ না পাওয়া যায়, 
+                    # তবে ফেসবুকের লাইভ রেঞ্জগুলো ইন্সটাগ্রামে ফলব্যাক হিসেবে কপি করা হবে।
+                    if "instagram" in temp_services and "facebook" in temp_services:
+                        if not temp_services["instagram"]["rids"] and temp_services["facebook"]["rids"]:
+                            temp_services["instagram"]["rids"] = temp_services["facebook"]["rids"].copy()
                     
                     if temp_services:
                         config["SERVICES"] = temp_services
